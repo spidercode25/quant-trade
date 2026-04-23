@@ -1,0 +1,122 @@
+import { TurtlePosition } from '../src/models/TurtlePosition';
+import { generateSignal, calculateUnitSize } from '../src/strategy/TurtleStrategy';
+
+describe('Dual-Engine Strategy (generateSignal)', () => {
+  let position: TurtlePosition;
+  const donchian20 = { upper: 105, lower: 90 };
+  const donchian10 = { upper: 100, lower: 95 };
+
+  beforeEach(() => {
+    position = new TurtlePosition('SPY.US');
+  });
+
+  // ========================================
+  // 分支A: 均值回归测试 (Volatility < 50%)
+  // ========================================
+  test('A1: MeanReversion - Bear Market Filter (No Entry)', () => {
+    const atr = 5;
+    const currentPrice = 110;
+    const sma200 = 120; // 价格在长期均线下方
+    const sma5 = 115;
+    const rsi2 = 10; // 超卖
+    const volatility = 0.20; 
+
+    const signal = generateSignal(position, currentPrice, sma200, sma5, rsi2, donchian20, donchian10, atr, volatility);
+    expect(signal.action).toBe('hold');
+    expect(signal.reason).toContain('waiting');
+  });
+
+  test('A2: MeanReversion - Buy The Dip Entry Signal', () => {
+    const atr = 5;
+    const currentPrice = 130;
+    const sma200 = 120; // 在均线上方
+    const sma5 = 135;
+    const rsi2 = 10; // 极度超卖
+    const volatility = 0.20;
+
+    const signal = generateSignal(position, currentPrice, sma200, sma5, rsi2, donchian20, donchian10, atr, volatility);
+    expect(signal.action).toBe('buy');
+    expect(signal.reason).toContain('buy_the_dip');
+  });
+
+  test('A3: MeanReversion - Take Profit Signal (SMA5)', () => {
+    const atr = 5;
+    position.addUnit(100, atr, 10);
+    const currentPrice = 106;
+    const sma200 = 120;
+    const sma5 = 105; // 价格反弹超过5日均线
+    const rsi2 = 80;
+    const volatility = 0.20;
+
+    const signal = generateSignal(position, currentPrice, sma200, sma5, rsi2, donchian20, donchian10, atr, volatility);
+    expect(signal.action).toBe('sell');
+    expect(signal.reason).toContain('take_profit_sma5');
+  });
+
+  // ========================================
+  // 分支B: 海龟突破测试 (Volatility >= 50%)
+  // ========================================
+  test('B1: TurtleBreakout - Entry Signal', () => {
+    const atr = 5;
+    const currentPrice = 110;
+    const sma200 = 100;
+    const sma5 = 105;
+    const rsi2 = 50;
+    const d20 = { upper: 105, lower: 90 };
+    const d10 = { upper: 100, lower: 95 };
+    const volatility = 0.60; // 触发高波动率分支
+
+    const signal = generateSignal(position, currentPrice, sma200, sma5, rsi2, d20, d10, atr, volatility);
+    expect(signal.action).toBe('buy');
+    expect(signal.reason).toContain('breakout');
+  });
+
+  test('B2: TurtleBreakout - Exit Signal (10-day low)', () => {
+    const atr = 5;
+    position.addUnit(100, atr, 10);
+    const currentPrice = 94; // < 10-day low (95)
+    const sma200 = 100;
+    const sma5 = 105;
+    const rsi2 = 50;
+    const d20 = { upper: 105, lower: 90 };
+    const d10 = { upper: 100, lower: 95 };
+    const volatility = 0.60;
+
+    const signal = generateSignal(position, currentPrice, sma200, sma5, rsi2, d20, d10, atr, volatility);
+    expect(signal.action).toBe('sell');
+    expect(signal.reason).toContain('exit_10day_low');
+  });
+
+  // ========================================
+  // 共享逻辑与风控
+  // ========================================
+  test('Shared: Stop Loss Signal (2N)', () => {
+    const atr = 5;
+    position.addUnit(100, atr, 10); // Stop loss: 100 - 10 = 90
+    const currentPrice = 88; // < 90
+    const sma200 = 120;
+    const sma5 = 95;
+    const rsi2 = 50;
+    
+    // Low volatility
+    let signal = generateSignal(position, currentPrice, sma200, sma5, rsi2, donchian20, donchian10, atr, 0.20);
+    expect(signal.action).toBe('sell');
+    expect(signal.reason).toContain('stop_loss');
+
+    // High volatility
+    signal = generateSignal(position, currentPrice, sma200, sma5, rsi2, donchian20, donchian10, atr, 0.80);
+    expect(signal.action).toBe('sell');
+    expect(signal.reason).toContain('stop_loss');
+  });
+
+  test('Unit Size Calculation (Adaptive Risk Multiplier)', () => {
+    // 基准 2%
+    expect(calculateUnitSize(10000, 5, 0.20)).toBe(40);  // 10000 * 2% / 5
+    // 高波动 3%
+    expect(calculateUnitSize(10000, 5, 0.60)).toBe(60);  // 10000 * 3% / 5
+    // 妖股 4%
+    expect(calculateUnitSize(10000, 5, 0.90)).toBe(80);  // 10000 * 4% / 5
+  });
+});
+
+
