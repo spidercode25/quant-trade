@@ -245,19 +245,25 @@ export class TradingBot {
                   position.addUnit(currentPrice, atr, unitsToTrade);
                 }
              }
-          } else if (signal.action === 'sell') {
-             // 卖出所有仓位
-             unitsToTrade = position.totalShares; 
-             if (unitsToTrade > 0) {
-                 if (isDryRun) {
-                   logger.info(`【模拟测试】卖出订单已生成 (拦截真实交易), 数量: ${unitsToTrade}`);
-                 } else {
-                   const resp = await this.service.submitOrder(symbol, 'sell', unitsToTrade);
-                   logger.info(`卖出订单已提交, 数量: ${unitsToTrade}, 返回: ${JSON.stringify(resp)}`);
-                 }
-             }
-             position.clear();
+      } else if (signal.action === 'sell') {
+        const proportion = signal.sellProportion ?? 1.0;
+        const sharesToSell = Math.floor(position.totalShares * proportion);
+
+        if (sharesToSell > 0) {
+          if (isDryRun) {
+            logger.info(`【模拟测试】卖出订单已生成 (拦截真实交易), 数量: ${sharesToSell} (比例: ${proportion})`);
+          } else {
+            const resp = await this.service.submitOrder(symbol, 'sell', sharesToSell);
+            logger.info(`卖出订单已提交, 数量: ${sharesToSell}, 返回: ${JSON.stringify(resp)}`);
           }
+
+          if (proportion >= 1.0) {
+            position.clear();
+          } else {
+            position.adjustForPartialSell(sharesToSell);
+          }
+        }
+      }
         }
       } catch (err) {
         logger.error(`处理 ${symbol} 时发生错误: `, err);

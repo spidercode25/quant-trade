@@ -114,10 +114,10 @@ async function runBacktest() {
         const proportion = signal.sellProportion || 1.0;
         const unitsToSell = Math.floor(position.totalShares * proportion);
         
-        if (unitsToSell > 0) {
+      if (unitsToSell > 0) {
           const revenue = unitsToSell * currentPrice;
           cash += revenue;
-          
+
           trades.push({
             date: new Date(Number(today.time)).toISOString().split('T')[0],
             action: proportion === 1.0 ? 'SELL' : 'SELL_HALF',
@@ -126,13 +126,11 @@ async function runBacktest() {
             reason: signal.reason,
             cashLeft: cash
           });
-          
-          if (proportion === 1.0) {
-             position.clear();
+
+          if (proportion >= 1.0) {
+            position.clear();
           } else {
-             position.totalShares -= unitsToSell;
-             // 如果还有其他需要缩减的状态可以放这里，比如 units = Math.ceil(units/2)
-             position.units = Math.ceil(position.units / 2);
+            position.adjustForPartialSell(unitsToSell);
           }
         }
       }
