@@ -167,6 +167,7 @@ export class TradingBot {
 
         const highs = history.map(c => c.high);
         const lows = history.map(c => c.low);
+        const donchian55 = calculateDonchianChannel(highs, lows, 55);
         const donchian20 = calculateDonchianChannel(highs, lows, 20);
         const donchian10 = calculateDonchianChannel(highs, lows, 10);
         
@@ -206,8 +207,8 @@ export class TradingBot {
                targetEntryMsg = `目前处于熊市结构 (Price < SMA200), 系统禁止建仓`;
             }
           } else {
-            // 海龟突破策略：只需知道 20 日通道上轨即可
-            const targetBreakoutPrice = donchian20.upper;
+            // 海龟突破策略：使用 55 日通道上轨判断入场
+            const targetBreakoutPrice = donchian55.upper;
             if (currentPrice < targetBreakoutPrice) {
               targetEntryMsg = `预测突破 $${targetBreakoutPrice.toFixed(2)} 时触发海龟入场 (动量追涨)`;
             } else {
@@ -221,7 +222,7 @@ export class TradingBot {
         logger.info(`当前价格: ${currentPrice}`);
 
         logger.info(`生成信号: ${symbol}`);
-        const signal = generateSignal(position, currentPrice, sma200, sma50, ema21, rsi14, donchian20, donchian10, atr, volatility, isMarketPanic);
+        const signal = generateSignal(position, currentPrice, sma200, sma50, ema21, rsi14, donchian55, donchian20, donchian10, atr, volatility, isMarketPanic);
         
         logger.info(`信号结果: ${signal.action} (理由: ${signal.reason})`);
 

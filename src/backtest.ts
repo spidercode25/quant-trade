@@ -65,6 +65,7 @@ async function runBacktest() {
       
       const highs = windowData.map(c => c.high);
       const lows = windowData.map(c => c.low);
+      const donchian55 = calculateDonchianChannel(highs, lows, 55);
       const donchian20 = calculateDonchianChannel(highs, lows, 20);
       const donchian10 = calculateDonchianChannel(highs, lows, 10);
 
@@ -87,7 +88,7 @@ async function runBacktest() {
         isMarketPanic = (vxxCurrentPrice > vxxSma10) || (vxxDailyChange > 0.05);
       }
 
-      const signal = generateSignal(position, currentPrice, sma200, sma50, ema21, rsi14, donchian20, donchian10, atr, volatility, isMarketPanic);
+      const signal = generateSignal(position, currentPrice, sma200, sma50, ema21, rsi14, donchian55, donchian20, donchian10, atr, volatility, isMarketPanic);
 
       if (signal.action === 'buy') {
         const totalValue = cash + (position.units * (position.lastEntryPrice || currentPrice));

@@ -15,6 +15,7 @@ export function generateSignal(
   sma50: number,
   ema21: number,
   rsi14: number,
+  donchian55: DonchianChannel,
   donchian20: DonchianChannel,
   donchian10: DonchianChannel,
   atr: number,
@@ -78,7 +79,7 @@ export function generateSignal(
     // === 分支B：海龟突破引擎 (高波动题材/妖股) ===
     if (position.units > 0) {
       // 1. 强止损触发 (跌破牛熊分界线 SMA200) -> 清仓全部
-      if (currentPrice < sma200) {
+      if (currentPrice < sma200 * 0.97) {
         return { action: 'sell', reason: 'hard_stop_sma200', sellProportion: 1.0 };
       }
 
@@ -117,11 +118,11 @@ export function generateSignal(
       return { action: 'hold', reason: 'holding' };
     } else {
       // Look for entry (Turtle Breakout)
-      if (currentPrice > donchian20.upper) {
+      if (currentPrice > donchian55.upper) {
         if (isMarketPanic) {
           return { action: 'hold', reason: 'market_panic_filter' };
         }
-        return { action: 'buy', reason: 'breakout', suggestedUnits: 1 };
+        return { action: 'buy', reason: 'breakout_55', suggestedUnits: 1 };
       }
       return { action: 'hold', reason: 'waiting' };
     }
