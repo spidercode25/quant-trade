@@ -23,6 +23,24 @@ export class TurtlePosition {
     this.stopLossPrice = price - 2 * this.N;
   }
 
+  /**
+   * 部分卖出后调整仓位状态
+   * 减仓一半后，止损线收紧到入场均价 - 2N（保证剩余仓位不再亏损）
+   * 标记 hasCutHalf=true 防止重复减仓
+   */
+  adjustForPartialSell(soldShares: number) {
+    this.totalShares -= soldShares;
+    if (this.totalShares <= 0) {
+      this.clear();
+      return;
+    }
+    // 收紧止损线到入场均价 - 2N，保证剩余仓位安全
+    const avgCost = this.entryPrices.reduce((a, b) => a + b, 0) / this.entryPrices.length;
+    this.stopLossPrice = avgCost - 2 * this.N;
+    this.hasCutHalf = true;
+    // 减仓后保留最高价跟踪，用于移动止盈
+  }
+
   clear() {
     this.units = 0;
     this.totalShares = 0;

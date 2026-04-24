@@ -29,13 +29,16 @@ export function generateSignal(
       if (currentPrice < sma200) {
         return { action: 'sell', reason: 'hard_stop_sma200', sellProportion: 1.0 };
       }
-      
-      // 2. 减仓触发 (海龟 2N 止损) -> 减仓一半
-      // 只有在未减仓过（或当前还有全仓时）才触发减仓，避免重复减仓
-      // 为了简单实现，只要跌破 stopLossPrice 并且当前还有持仓，就触发卖出一半。我们用 reason 来标记
-      if (currentPrice < position.stopLossPrice && !position.hasCutHalf) {
-        position.hasCutHalf = true; // 标记已减仓，避免循环触发
-        return { action: 'sell', reason: 'cut_half_2n', sellProportion: 0.5 };
+
+      // 2. 减仓触发 (海龟 2N 止损)
+      // 首次跌破止损线 -> 减仓一半，止损线收紧到入场均价 - 2N
+      // 再次跌破收紧后的止损线 -> 清仓剩余
+      if (currentPrice < position.stopLossPrice) {
+        if (!position.hasCutHalf) {
+          return { action: 'sell', reason: 'cut_half_2n', sellProportion: 0.5 };
+        } else {
+          return { action: 'sell', reason: 'exit_remaining_2n', sellProportion: 1.0 };
+        }
       }
       
       // 3. 止盈触发 (均值回归，盈利超过 5% 后，回撤 2% 平仓)
@@ -78,11 +81,16 @@ export function generateSignal(
       if (currentPrice < sma200) {
         return { action: 'sell', reason: 'hard_stop_sma200', sellProportion: 1.0 };
       }
-      
-      // 2. 减仓触发 (海龟 2N 止损) -> 减仓一半
-      if (currentPrice < position.stopLossPrice && !position.hasCutHalf) {
-        position.hasCutHalf = true;
-        return { action: 'sell', reason: 'cut_half_2n', sellProportion: 0.5 };
+
+      // 2. 减仓触发 (海龟 2N 止损)
+      // 首次跌破止损线 -> 减仓一半，止损线收紧到入场均价 - 2N
+      // 再次跌破收紧后的止损线 -> 清仓剩余
+      if (currentPrice < position.stopLossPrice) {
+        if (!position.hasCutHalf) {
+          return { action: 'sell', reason: 'cut_half_2n', sellProportion: 0.5 };
+        } else {
+          return { action: 'sell', reason: 'exit_remaining_2n', sellProportion: 1.0 };
+        }
       }
       
       // 3. 离场触发 (跌破10日极低点，或盈利超过 20% 后回撤 10% 止盈 - 适配高波动妖股)
