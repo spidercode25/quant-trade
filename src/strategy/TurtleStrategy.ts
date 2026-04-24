@@ -53,8 +53,8 @@ export function generateSignal(
          }
       } 
       
-      // 4. 超买止盈 (RSI(14) > 70 表明短期反弹动能衰竭)
-      if (rsi14 > 70) {
+      // 4. 超买止盈 (RSI(14) > 80 表明短期反弹动能极度衰竭)
+      if (rsi14 > 80) {
         return { action: 'sell', reason: 'take_profit_overbought', sellProportion: 1.0 };
       }
       

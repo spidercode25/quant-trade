@@ -182,7 +182,7 @@ export class TradingBot {
           // 已有持仓，预测出场和加仓点
           const stopLossPrice = position.stopLossPrice;
           if (volatility < 0.50) {
-            targetEntryMsg = `当前持仓 ${position.totalShares} 股。预测反弹至 RSI(14)>70 或 移动止盈 (5%利润后回撤2%)，跌破 $${stopLossPrice.toFixed(2)} (2N) 止损。`;
+            targetEntryMsg = `当前持仓 ${position.totalShares} 股。预测反弹至 RSI(14)>80 或 移动止盈 (5%利润后回撤2%)，跌破 $${stopLossPrice.toFixed(2)} (2N) 止损。`;
           } else {
             const exit10DayPrice = donchian10.lower;
             const lastEntry = position.lastEntryPrice || 0;
