@@ -9,6 +9,7 @@ import {
   calculateRSI,
   predictTargetPriceForRSI,
   calculateDonchianChannel,
+  calculateBollingerBands,
   calculateVolatility,
   OHLC 
 } from '../strategy/TurtleIndicators';
@@ -164,15 +165,17 @@ export class TradingBot {
         const ema21 = calculateEMA(closes, 21);
         const rsi14 = calculateRSI(closes, 14);
         const volatility = calculateVolatility(closes, 60);
+        const volatility200 = calculateVolatility(closes, 200);
 
         const highs = history.map(c => c.high);
         const lows = history.map(c => c.low);
         const donchian55 = calculateDonchianChannel(highs, lows, 55);
+        const bb20_2_5 = calculateBollingerBands(closes, 20, 2.0);
         const donchian20 = calculateDonchianChannel(highs, lows, 20);
         const donchian10 = calculateDonchianChannel(highs, lows, 10);
         
-        const strategyMode = volatility < 0.50 ? '【趋势回调波段】(白马股)' : '【海龟突破】(题材/妖股)';
-        logger.info(`[${symbol}] 历史年化波动率: ${(volatility*100).toFixed(2)}% -> 智能分配策略: ${strategyMode}`);
+        const strategyMode = (volatility < 0.50 && volatility200 < 0.50) ? '【趋势回调波段】(白马股)' : '【海龟突破】(题材/妖股)';
+        logger.info(`[${symbol}] 历史年化波动率: 60d=${(volatility*100).toFixed(2)}%, 200d=${(volatility200*100).toFixed(2)}% -> 智能分配策略: ${strategyMode}`);
         logger.info(`ATR: ${atr.toFixed(2)}, SMA200: ${sma200.toFixed(2)}, SMA50: ${sma50.toFixed(2)}, RSI(14): ${rsi14.toFixed(2)}`);
 
         // === 预测入场点位 (Predict Target Entry Price) ===
@@ -182,7 +185,7 @@ export class TradingBot {
         if (position.units > 0) {
           // 已有持仓，预测出场和加仓点
           const stopLossPrice = position.stopLossPrice;
-          if (volatility < 0.50) {
+          if (volatility < 0.50 && volatility200 < 0.50) {
             targetEntryMsg = `当前持仓 ${position.totalShares} 股。预测反弹至 RSI(14)>80 或 移动止盈 (5%利润后回撤2%)，跌破 $${stopLossPrice.toFixed(2)} (2N) 止损。`;
           } else {
             const exit10DayPrice = donchian10.lower;
@@ -199,7 +202,7 @@ export class TradingBot {
           }
         } else {
           // 空仓状态，预测入场点
-          if (volatility < 0.50) {
+          if (volatility < 0.50 && volatility200 < 0.50) {
             // 均线回调预测:
             if (currentPrice > sma200) {
                targetEntryMsg = `等待回踩 50日均线($${sma50.toFixed(2)}) 附近且动能降温 (当前价格: $${currentPrice.toFixed(2)}, RSI14: ${rsi14.toFixed(2)})`;
@@ -222,7 +225,7 @@ export class TradingBot {
         logger.info(`当前价格: ${currentPrice}`);
 
         logger.info(`生成信号: ${symbol}`);
-        const signal = generateSignal(position, currentPrice, sma200, sma50, ema21, rsi14, donchian55, donchian20, donchian10, atr, volatility, isMarketPanic);
+        const signal = generateSignal(position, currentPrice, sma200, sma50, ema21, rsi14, donchian55, bb20_2_5, donchian20, donchian10, atr, volatility, volatility200, isMarketPanic);
         
         logger.info(`信号结果: ${signal.action} (理由: ${signal.reason})`);
 
@@ -238,12 +241,12 @@ export class TradingBot {
              if (unitsToTrade > 0) {
                 if (isDryRun) {
                   logger.info(`【模拟测试】买入订单已生成 (拦截真实交易), 数量: ${unitsToTrade}`);
-                  position.addUnit(currentPrice, atr, unitsToTrade);
-                } else {
-                  // Submit order
-                  const resp = await this.service.submitOrder(symbol, 'buy', unitsToTrade);
-                  logger.info(`买入订单已提交, 数量: ${unitsToTrade}, 返回: ${JSON.stringify(resp)}`);
-                  position.addUnit(currentPrice, atr, unitsToTrade);
+                position.addUnit(currentPrice, atr, unitsToTrade, signal.reason);
+              } else {
+                // Submit order
+                const resp = await this.service.submitOrder(symbol, 'buy', unitsToTrade);
+                logger.info(`买入订单已提交, 数量: ${unitsToTrade}, 返回: ${JSON.stringify(resp)}`);
+                position.addUnit(currentPrice, atr, unitsToTrade, signal.reason);
                 }
              }
       } else if (signal.action === 'sell') {

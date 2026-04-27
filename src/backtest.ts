@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { logger } from './utils/logger';
 import { LongbridgeService } from './exchange/LongbridgeService';
 import { TurtlePosition } from './models/TurtlePosition';
-import { calculateTR, calculateATR, calculateSMA, calculateEMA, calculateRSI, calculateDonchianChannel, calculateVolatility, OHLC } from './strategy/TurtleIndicators';
+import { calculateTR, calculateATR, calculateSMA, calculateEMA, calculateRSI, calculateDonchianChannel, calculateBollingerBands, calculateVolatility, OHLC } from './strategy/TurtleIndicators';
 import { generateSignal, calculateUnitSize } from './strategy/TurtleStrategy';
 
 dotenv.config();
@@ -62,10 +62,12 @@ async function runBacktest() {
       const ema21 = calculateEMA(closes, 21);
       const rsi14 = calculateRSI(closes, 14);
       const volatility = calculateVolatility(closes, 60);
+      const volatility200 = calculateVolatility(closes, 200);
       
       const highs = windowData.map(c => c.high);
       const lows = windowData.map(c => c.low);
       const donchian55 = calculateDonchianChannel(highs, lows, 55);
+      const bb20_2_5 = calculateBollingerBands(closes, 20, 2.0);
       const donchian20 = calculateDonchianChannel(highs, lows, 20);
       const donchian10 = calculateDonchianChannel(highs, lows, 10);
 
@@ -88,7 +90,7 @@ async function runBacktest() {
         isMarketPanic = (vxxCurrentPrice > vxxSma10) || (vxxDailyChange > 0.05);
       }
 
-      const signal = generateSignal(position, currentPrice, sma200, sma50, ema21, rsi14, donchian55, donchian20, donchian10, atr, volatility, isMarketPanic);
+      const signal = generateSignal(position, currentPrice, sma200, sma50, ema21, rsi14, donchian55, bb20_2_5, donchian20, donchian10, atr, volatility, volatility200, isMarketPanic);
 
       if (signal.action === 'buy') {
         const totalValue = cash + (position.units * (position.lastEntryPrice || currentPrice));
@@ -99,7 +101,7 @@ async function runBacktest() {
           const cost = unitsToTrade * currentPrice;
           if (cash >= cost) {
             cash -= cost;
-            position.addUnit(currentPrice, atr, unitsToTrade);
+            position.addUnit(currentPrice, atr, unitsToTrade, signal.reason);
             trades.push({
               date: new Date(Number(today.time)).toISOString().split('T')[0],
               action: 'BUY',
@@ -158,8 +160,8 @@ async function runBacktest() {
     
     // 打印最近的几次交易
     if (trades.length > 0) {
-      logger.info('所有交易记录 (节选最近10次):');
-      trades.slice(-10).forEach(t => {
+      logger.info('所有交易记录:');
+      trades.forEach(t => {
         logger.info(`  ${t.date} | ${t.action.padEnd(4)} | 价格: $${t.price.toFixed(2).padStart(6)} | 数量: ${t.units} | 理由: ${t.reason.padEnd(12)} | 剩余现金: $${t.cashLeft.toFixed(2)}`);
       });
     } else {

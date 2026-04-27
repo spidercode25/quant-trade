@@ -1,5 +1,5 @@
 import { TurtlePosition } from '../models/TurtlePosition';
-import { DonchianChannel } from './TurtleIndicators';
+import { DonchianChannel, BollingerBands } from './TurtleIndicators';
 
 export interface TradeSignal {
   action: 'buy' | 'sell' | 'hold';
@@ -16,14 +16,16 @@ export function generateSignal(
   ema21: number,
   rsi14: number,
   donchian55: DonchianChannel,
+  bb20_2_5: BollingerBands,
   donchian20: DonchianChannel,
   donchian10: DonchianChannel,
   atr: number,
   volatility: number,
+  volatility200: number,
   isMarketPanic: boolean = false
 ): TradeSignal {
   
-  if (volatility < 0.50) {
+  if (volatility < 0.50 && volatility200 < 0.50) {
     // === 分支A：趋势回调引擎 (低波动白马股 - SMA50 强支撑) ===
     if (position.units > 0) {
       // 1. 强止损触发 (跌破牛熊分界线 SMA200) -> 清仓全部
@@ -66,7 +68,10 @@ export function generateSignal(
       // 只有在长期趋势向上 (SMA200以上)，价格回踩至 50日均线附近 (±2%)，且动能偏弱未超买 (RSI14 < 50) 时买入
       const isNearSma50 = currentPrice >= sma50 * 0.98 && currentPrice <= sma50 * 1.02;
       
-      if (currentPrice > sma200 && isNearSma50 && rsi14 < 50) {
+      // 过度拉升过滤器：如果 SMA50 比 SMA200 高出 15% 以上，说明在炒作高点，不接飞刀
+      const isOverExtended = (sma50 / sma200 - 1) > 0.15;
+      
+      if (currentPrice > sma200 && isNearSma50 && rsi14 < 50 && !isOverExtended) {
         if (isMarketPanic) {
           return { action: 'hold', reason: 'market_panic_filter' };
         }
@@ -79,9 +84,13 @@ export function generateSignal(
     // === 分支B：海龟突破引擎 (高波动题材/妖股) ===
     if (position.units > 0) {
       // 1. 强止损触发 (跌破牛熊分界线 SMA200) -> 清仓全部
-      if (currentPrice < sma200 * 0.97) {
+       if (position.entryReason !== 'rubber_band_dip' && currentPrice < sma200 * 0.97) {
         return { action: 'sell', reason: 'hard_stop_sma200', sellProportion: 1.0 };
       }
+
+          if (position.entryReason === 'rubber_band_dip' && currentPrice > bb20_2_5.middle) {
+            return { action: 'sell', reason: 'mean_reversion_target', sellProportion: 1.0 };
+          }
 
       // 2. 减仓触发 (海龟 2N 止损)
       // 首次跌破止损线 -> 减仓一半，止损线收紧到入场均价 - 2N
@@ -118,6 +127,13 @@ export function generateSignal(
       return { action: 'hold', reason: 'holding' };
     } else {
       // Look for entry (Turtle Breakout)
+      if (currentPrice < bb20_2_5.lower || rsi14 < 40) {
+        if (isMarketPanic) {
+          return { action: 'hold', reason: 'market_panic_filter' };
+        }
+        return { action: 'buy', reason: 'rubber_band_dip', suggestedUnits: 1 };
+      }
+
       if (currentPrice > donchian55.upper) {
         if (isMarketPanic) {
           return { action: 'hold', reason: 'market_panic_filter' };

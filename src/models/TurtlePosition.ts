@@ -7,14 +7,16 @@ export class TurtlePosition {
   public stopLossPrice: number = 0;
   public highestPriceSinceEntry: number | null = null;
   public hasCutHalf: boolean = false; // 是否已经因为触发 2N 减仓过一半
+  public entryReason: string = ''; // 入场策略标识 (rubber_band_dip / breakout_55 / buy_pullback)
 
   constructor(symbol: string) {
     this.symbol = symbol;
   }
 
-  addUnit(price: number, atr: number, shares: number) {
+  addUnit(price: number, atr: number, shares: number, reason?: string) {
     if (this.units === 0) {
       this.N = atr;
+      this.entryReason = reason || '';
     }
     this.units += 1;
     this.totalShares += shares;
@@ -49,6 +51,7 @@ export class TurtlePosition {
     this.stopLossPrice = 0;
     this.highestPriceSinceEntry = null;
     this.hasCutHalf = false;
+    this.entryReason = '';
   }
 
   get lastEntryPrice(): number | null {

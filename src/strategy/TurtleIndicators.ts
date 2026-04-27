@@ -115,6 +115,30 @@ export function calculateDonchianChannel(highs: number[], lows: number[], period
   };
 }
 
+export interface BollingerBands {
+  upper: number;
+  middle: number;
+  lower: number;
+}
+
+export function calculateStandardDeviation(prices: number[], period: number): number {
+  if (prices.length < period) return 0;
+  const slice = prices.slice(prices.length - period);
+  const mean = slice.reduce((a, b) => a + b, 0) / period;
+  const variance = slice.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / period;
+  return Math.sqrt(variance);
+}
+
+export function calculateBollingerBands(prices: number[], period: number, multiplier: number = 2.5): BollingerBands {
+  const middle = calculateSMA(prices, period);
+  const stdDev = calculateStandardDeviation(prices, period);
+  return {
+    upper: middle + multiplier * stdDev,
+    middle: middle,
+    lower: middle - multiplier * stdDev
+  };
+}
+
 export function calculateVolatility(prices: number[], period: number = 60): number {
   if (prices.length < period + 1) return 0;
   const returns: number[] = [];
