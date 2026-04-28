@@ -228,8 +228,9 @@ export function isBacktestReport(value: unknown): value is BacktestReport {
 
   if (value.status === 'failed') {
     return isRecord(value.failure)
-      && typeof value.failure.message === 'string'
-      && typeof value.failure.reason === 'string';
+    && typeof value.failure.message === 'string'
+    && typeof value.failure.reason === 'string'
+    && value.perSymbolResults.every(result => result.status === 'failed');
   }
 
   if (value.status === 'no-trades') {

@@ -36,7 +36,7 @@ function installFixedDate(now: Date): () => void {
   const RealDate = Date;
 
   class MockDate extends RealDate {
-    constructor(...args: any[]) {
+    constructor(...args: [] | [number] | [string] | [number, number] | [number, number, number] | [number, number, number, number] | [number, number, number, number, number] | [number, number, number, number, number, number] | [number, number, number, number, number, number, number]) {
       switch (args.length) {
         case 0:
           super(now.getTime());

@@ -26,11 +26,37 @@ export async function writeBacktestReportMarkdown(
   });
 
   const absoluteOutputDir = path.resolve(baseDir, outputDir);
-  const absoluteFilePath = path.resolve(baseDir, outputDir, path.basename(relativeFilename));
+  const filenameParts = path.parse(path.basename(relativeFilename));
   const markdown = renderBacktestReportMarkdown(report);
 
   await fs.mkdir(absoluteOutputDir, { recursive: true });
-  await fs.writeFile(absoluteFilePath, markdown, { encoding: 'utf8' });
 
-  return absoluteFilePath;
+  let counter = 0;
+  while (true) {
+    const suffix = counter === 0 ? '' : `__n${counter}`;
+    const candidateFilename = `${filenameParts.name}${suffix}${filenameParts.ext}`;
+    const absoluteFilePath = path.resolve(baseDir, outputDir, candidateFilename);
+
+    try {
+      await fs.access(absoluteFilePath);
+      counter += 1;
+      continue;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    try {
+      await fs.writeFile(absoluteFilePath, markdown, { encoding: 'utf8', flag: 'wx' });
+      return absoluteFilePath;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        counter += 1;
+        continue;
+      }
+
+      throw error;
+    }
+  }
 }
