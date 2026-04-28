@@ -102,6 +102,50 @@ EXCHANGE_TEST_MODE=false
 mkdir logs
 ```
 
+## 回测报告
+
+每次回测运行会自动生成 Markdown 格式的报告文件，保存在 `reports/backtests/` 目录下。
+
+### 生成报告
+
+```bash
+# 标准回测
+npm run backtest
+
+# 诊断模式回测（包含详细信号分析）
+npx ts-node src/backtest-diagnose.ts
+```
+
+### 报告文件命名
+
+报告文件使用以下格式命名，确保每次运行的报告唯一：
+```
+YYYYMMDD-HHmmss-SSS__{entrypoint}__{symbol-descriptor}.md
+```
+
+例如：
+- `20260428-070158-444__backtest__single-symbol.md`
+- `20260428-070729-792__backtest-diagnose__multi-3.md`
+
+如果同一秒内产生多个报告，会自动添加 `__n{counter}` 后缀避免覆盖。
+
+### 报告内容
+
+每个报告包含以下部分：
+- **运行元数据**: 策略名称、入口点、生成时间、初始资金、股票池大小
+- **运行状态**: success / no-trades / failed
+- **股票池**: 参与回测的所有标的
+- **分标的结果**: 每个标的的交易次数、最终资金、盈亏
+- **最近交易**: 每个标的最近最多10笔交易记录
+- **诊断附录**（诊断模式）: 详细的买卖信号分析，包括价格、指标、止损位等
+
+### 日志与报告的区别
+
+- **日志** (`logs/`)：运行时日志，由 Winston 生成，包含所有级别的日志信息
+- **报告** (`reports/backtests/`)：结构化 Markdown 文档，每次回测运行生成一份，便于查看和版本控制
+
+注意：根目录下的 `.txt` 文件是临时输出，不是正式支持的报告格式。
+
 ## 使用方法
 
 ### 开发模式

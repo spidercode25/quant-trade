@@ -8,22 +8,63 @@ export interface TradeSignal {
   sellProportion?: number; // 卖出比例 (0~1)
 }
 
+type FullGenerateSignalArgs = [
+  TurtlePosition,
+  number,
+  number,
+  number,
+  number,
+  number,
+  DonchianChannel,
+  BollingerBands,
+  DonchianChannel,
+  DonchianChannel,
+  number,
+  number,
+  number,
+  boolean?
+];
+
+type LegacyGenerateSignalArgs = [
+  TurtlePosition,
+  number,
+  number,
+  number,
+  number,
+  number,
+  DonchianChannel,
+  DonchianChannel,
+  number,
+  number,
+  boolean?
+];
+
+export function generateSignal(...args: FullGenerateSignalArgs): TradeSignal;
+export function generateSignal(...args: LegacyGenerateSignalArgs): TradeSignal;
 export function generateSignal(
-  position: TurtlePosition,
-  currentPrice: number,
-  sma200: number,
-  sma50: number,
-  ema21: number,
-  rsi14: number,
-  donchian55: DonchianChannel,
-  bb20_2_5: BollingerBands,
-  donchian20: DonchianChannel,
-  donchian10: DonchianChannel,
-  atr: number,
-  volatility: number,
-  volatility200: number,
-  isMarketPanic: boolean = false
+  ...args: FullGenerateSignalArgs | LegacyGenerateSignalArgs
 ): TradeSignal {
+  const [position, currentPrice, sma200, sma50, ema21, rsi14] = args;
+  let donchian55: DonchianChannel;
+  let bb20_2_5: BollingerBands;
+  let donchian20: DonchianChannel;
+  let donchian10: DonchianChannel;
+  let atr: number;
+  let volatility: number;
+  let volatility200: number;
+  let isMarketPanic = false;
+
+  if (args.length === 11) {
+    const legacyArgs = args as LegacyGenerateSignalArgs;
+    [, , , , , , donchian20, donchian10, atr, volatility, isMarketPanic = false] = legacyArgs;
+    donchian55 = donchian20;
+    bb20_2_5 = { upper: donchian20.upper, middle: sma50, lower: donchian10.lower };
+    volatility200 = volatility;
+  } else {
+    const fullArgs = args as FullGenerateSignalArgs;
+    [, , , , , , donchian55, bb20_2_5, donchian20, donchian10, atr, volatility, volatility200, isMarketPanic = false] = fullArgs;
+  }
+  
   
   if (volatility < 0.50 && volatility200 < 0.50) {
     // === 分支A：趋势回调引擎 (低波动白马股 - SMA50 强支撑) ===
