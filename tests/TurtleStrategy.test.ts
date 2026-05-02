@@ -56,27 +56,58 @@ describe('Dual-Engine Strategy (generateSignal)', () => {
   });
 
   // ========================================
-  // 分支B: 海龟突破测试 (Volatility >= 50%)
+  // 分支B: 高波动趋势突破测试 (Volatility >= 50%)
   // ========================================
-  test('B1: TurtleBreakout - Entry Signal', () => {
+  test('B1: HighVol - Momentum Breakout Entry', () => {
     const atr = 5;
     const currentPrice = 110;
     const sma200 = 100;
     const sma5 = 105;
-    const rsi2 = 50;
+    const rsi2 = 55;
     const d20 = { upper: 105, lower: 90 };
     const d10 = { upper: 100, lower: 95 };
-    const volatility = 0.60; // 触发高波动率分支
+    const volatility = 0.60;
 
     const signal = generateSignal(position, currentPrice, sma200, sma5, sma5, rsi2, donchian55, bb20_2_5, d20, d10, atr, volatility, volatility);
     expect(signal.action).toBe('buy');
-    expect(signal.reason).toContain('breakout_55');
+    expect(signal.reason).toContain('momentum_breakout_entry');
   });
 
-  test('B2: TurtleBreakout - Exit Signal (10-day low)', () => {
+  test('B2: HighVol - Pullback Stabilization Entry', () => {
+    const atr = 5;
+    const currentPrice = 96;
+    const sma200 = 90;
+    const sma5 = 95;
+    const rsi2 = 45;
+    const d20 = { upper: 110, lower: 85 };
+    const d10 = { upper: 105, lower: 95 };
+    const volatility = 0.60;
+
+    const signal = generateSignal(position, currentPrice, sma200, sma5, sma5, rsi2, donchian55, bb20_2_5, d20, d10, atr, volatility, volatility);
+    expect(signal.action).toBe('buy');
+    expect(signal.reason).toContain('pullback_entry');
+  });
+
+  test('B3: HighVol - Trend Stop Loss', () => {
     const atr = 5;
     position.addUnit(100, atr, 10);
-    const currentPrice = 94; // < 10-day low (95)
+    const currentPrice = 75;
+    const sma200 = 80;
+    const sma5 = 90;
+    const rsi2 = 40;
+    const d20 = { upper: 105, lower: 90 };
+    const d10 = { upper: 100, lower: 95 };
+    const volatility = 0.60;
+
+    const signal = generateSignal(position, currentPrice, sma200, sma5, sma5, rsi2, donchian55, bb20_2_5, d20, d10, atr, volatility, volatility);
+    expect(signal.action).toBe('sell');
+    expect(signal.reason).toContain('trend_stop_loss');
+  });
+
+  test('B4: HighVol - ATR Trailing Stop', () => {
+    const atr = 5;
+    position.addUnit(100, atr, 10);
+    const currentPrice = 90;
     const sma200 = 80;
     const sma5 = 105;
     const rsi2 = 50;
@@ -86,7 +117,23 @@ describe('Dual-Engine Strategy (generateSignal)', () => {
 
     const signal = generateSignal(position, currentPrice, sma200, sma5, sma5, rsi2, donchian55, bb20_2_5, d20, d10, atr, volatility, volatility);
     expect(signal.action).toBe('sell');
-    expect(signal.reason).toContain('exit_10day_low');
+    expect(signal.reason).toContain('atr_trailing_stop_full');
+  });
+
+  test('B5: HighVol - Profit Pyramid', () => {
+    const atr = 5;
+    position.addUnit(100, atr, 10);
+    const currentPrice = 110;
+    const sma200 = 90;
+    const sma5 = 105;
+    const rsi2 = 55;
+    const d20 = { upper: 110, lower: 90 };
+    const d10 = { upper: 108, lower: 95 };
+    const volatility = 0.60;
+
+    const signal = generateSignal(position, currentPrice, sma200, sma5, sma5, rsi2, donchian55, bb20_2_5, d20, d10, atr, volatility, volatility);
+    expect(signal.action).toBe('buy');
+    expect(signal.reason).toContain('profit_pyramid');
   });
 
   // ========================================
@@ -108,7 +155,7 @@ describe('Dual-Engine Strategy (generateSignal)', () => {
     // High volatility
     signal = generateSignal(position, currentPrice, sma200, sma5, sma5, rsi2, donchian55, bb20_2_5, donchian20, donchian10, atr, 0.80, 0.80);
     expect(signal.action).toBe('sell');
-    expect(signal.reason).toContain('cut_half_2n');
+    expect(signal.reason).toContain('atr_trailing_stop_full');
   });
 
   test('Unit Size Calculation (Adaptive Risk Multiplier)', () => {
