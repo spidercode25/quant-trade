@@ -5,6 +5,7 @@ import { TurtlePosition } from './models/TurtlePosition';
 import { calculateTR, calculateATR, calculateSMA, calculateEMA, calculateRSI, calculateDonchianChannel, calculateBollingerBands, calculateVolatility, OHLC } from './strategy/TurtleIndicators';
 import { generateSignal, calculateUnitSize } from './strategy/TurtleStrategy';
 import { createBacktestReport, writeBacktestReportMarkdown, type BacktestDateWindow, type BacktestSymbolResult } from './reporting';
+import { getStockPool } from './config/stockConfig';
 
 dotenv.config();
 
@@ -13,7 +14,7 @@ async function runBacktest() {
   const service = new LongbridgeService();
   await service.init();
 
-  const symbols = (process.env.STOCK_POOL || 'SPY.US,AAPL.US,TSLA.US').split(',').map(s => s.trim());
+  const symbols = getStockPool();
   const initialCapital = 10000;
   const generatedAtUtc = new Date().toISOString();
   const dateWindowsBySymbol: BacktestDateWindow[] = [];
@@ -124,7 +125,7 @@ async function runBacktest() {
 
         if (signal.action === 'buy') {
           const totalValue = cash + (position.units * (position.lastEntryPrice || currentPrice));
-          const unitSize = calculateUnitSize(totalValue, atr, volatility);
+          const unitSize = calculateUnitSize(totalValue, atr, volatility, symbol);
           const unitsToTrade = signal.suggestedUnits ? unitSize * signal.suggestedUnits : unitSize;
           
           if (unitsToTrade > 0) {

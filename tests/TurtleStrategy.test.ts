@@ -136,6 +136,55 @@ describe('Dual-Engine Strategy (generateSignal)', () => {
     expect(signal.reason).toContain('profit_pyramid');
   });
 
+  test('B6: Oscillatory high-vol does not chase pure breakout entries', () => {
+    const oscillatoryPosition = new TurtlePosition('COIN.US');
+    const atr = 5;
+    const currentPrice = 110;
+    const sma200 = 100;
+    const sma5 = 105;
+    const rsi2 = 55;
+    const d20 = { upper: 105, lower: 90 };
+    const d10 = { upper: 100, lower: 95 };
+    const volatility = 0.60;
+
+    const signal = generateSignal(oscillatoryPosition, currentPrice, sma200, sma5, sma5, rsi2, donchian55, bb20_2_5, d20, d10, atr, volatility, volatility);
+    expect(signal.action).toBe('hold');
+    expect(signal.reason).toContain('waiting_oscillatory_pullback');
+  });
+
+  test('B7: Oscillatory high-vol enters on pullback reclaim', () => {
+    const oscillatoryPosition = new TurtlePosition('COIN.US');
+    const atr = 5;
+    const currentPrice = 98;
+    const sma200 = 90;
+    const sma5 = 97;
+    const rsi2 = 50;
+    const d20 = { upper: 110, lower: 85 };
+    const d10 = { upper: 105, lower: 96 };
+    const volatility = 0.60;
+
+    const signal = generateSignal(oscillatoryPosition, currentPrice, sma200, sma5, sma5, rsi2, donchian55, bb20_2_5, d20, d10, atr, volatility, volatility);
+    expect(signal.action).toBe('buy');
+    expect(signal.reason).toContain('osc_pullback_reclaim_entry');
+  });
+
+  test('B8: Oscillatory high-vol does not pyramid winning positions', () => {
+    const oscillatoryPosition = new TurtlePosition('COIN.US');
+    const atr = 5;
+    oscillatoryPosition.addUnit(100, atr, 10);
+    const currentPrice = 108;
+    const sma200 = 95;
+    const sma5 = 105;
+    const rsi2 = 50;
+    const d20 = { upper: 110, lower: 90 };
+    const d10 = { upper: 108, lower: 95 };
+    const volatility = 0.60;
+
+    const signal = generateSignal(oscillatoryPosition, currentPrice, sma200, sma5, sma5, rsi2, donchian55, bb20_2_5, d20, d10, atr, volatility, volatility);
+    expect(signal.action).toBe('hold');
+    expect(signal.reason).toContain('holding_oscillatory_position');
+  });
+
   // ========================================
   // 共享逻辑与风控
   // ========================================
@@ -162,9 +211,11 @@ describe('Dual-Engine Strategy (generateSignal)', () => {
     // 基准 2%
     expect(calculateUnitSize(10000, 5, 0.20)).toBe(40);  // 10000 * 2% / 5
     // 高波动 3%
-    expect(calculateUnitSize(10000, 5, 0.60)).toBe(60);  // 10000 * 3% / 5
+    expect(calculateUnitSize(10000, 5, 0.60, 'OKLO.US')).toBe(60);  // 趋势型高波动 3%
+    // 高波动震荡型降为 2%
+    expect(calculateUnitSize(10000, 5, 0.60, 'COIN.US')).toBe(40);
     // 妖股 4%
-    expect(calculateUnitSize(10000, 5, 0.90)).toBe(80);  // 10000 * 4% / 5
+    expect(calculateUnitSize(10000, 5, 0.90, 'OKLO.US')).toBe(80);  // 10000 * 4% / 5
   });
 });
 

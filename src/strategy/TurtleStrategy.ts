@@ -1,3 +1,4 @@
+import { getHighVolSubtype } from '../config/stockConfig';
 import { TurtlePosition } from '../models/TurtlePosition';
 import { DonchianChannel, BollingerBands } from './TurtleIndicators';
 
@@ -123,6 +124,69 @@ export function generateSignal(
       return { action: 'hold', reason: 'waiting' };
     }
   } else {
+    const highVolSubtype = getHighVolSubtype(position.symbol);
+
+    if (highVolSubtype === 'oscillatory') {
+      if (position.units > 0) {
+        const avgCost = position.entryPrices.reduce((a, b) => a + b, 0) / position.entryPrices.length;
+        const currentProfit = currentPrice / avgCost - 1;
+
+        if (currentPrice < sma200 * 0.99) {
+          if (currentProfit < 0) {
+            return { action: 'sell', reason: 'osc_failed_rebound_exit', sellProportion: 1.0 };
+          }
+          return { action: 'sell', reason: 'osc_trend_reversal_exit', sellProportion: 1.0 };
+        }
+
+        const baseStopLoss = avgCost - 1.5 * position.N;
+        const lastEntry = position.lastEntryPrice || avgCost;
+        const reboundStopLoss = lastEntry - 1.0 * atr;
+        const effectiveStopLoss = Math.max(baseStopLoss, reboundStopLoss);
+
+        if (currentPrice < effectiveStopLoss) {
+          return { action: 'sell', reason: 'osc_atr_stop_exit', sellProportion: 1.0 };
+        }
+
+        if (currentPrice > bb20_2_5.middle && rsi14 >= 55) {
+          return { action: 'sell', reason: 'osc_rebound_take_profit', sellProportion: 1.0 };
+        }
+
+        if (currentProfit > 0.10) {
+          if (!position.highestPriceSinceEntry || currentPrice > position.highestPriceSinceEntry) {
+            position.highestPriceSinceEntry = currentPrice;
+          }
+
+          const trailingStopPrice = position.highestPriceSinceEntry * 0.96;
+          if (currentPrice < trailingStopPrice) {
+            return { action: 'sell', reason: 'osc_trailing_profit_stop', sellProportion: 1.0 };
+          }
+        }
+
+        return { action: 'hold', reason: 'holding_oscillatory_position' };
+      }
+
+      const isUptrend = currentPrice > sma200 && sma50 > sma200 * 0.92;
+      if (!isUptrend) {
+        return { action: 'hold', reason: 'waiting_oscillatory_uptrend' };
+      }
+
+      const pullbackFromHigh = recentHigh > 0 ? (recentHigh - currentPrice) / recentHigh : 0;
+      const isPullbackRange = pullbackFromHigh >= 0.06 && pullbackFromHigh <= 0.22;
+      const isNearLow = currentPrice <= recentLow * 1.03;
+      const isReclaimingEma21 = currentPrice > ema21;
+      const isRSIRecovering = rsi14 >= 42 && rsi14 <= 58;
+
+      if (isPullbackRange && isNearLow && isReclaimingEma21 && isRSIRecovering) {
+        if (isMarketPanic) {
+          return { action: 'hold', reason: 'market_panic_filter' };
+        }
+
+        return { action: 'buy', reason: 'osc_pullback_reclaim_entry', suggestedUnits: 1 };
+      }
+
+      return { action: 'hold', reason: 'waiting_oscillatory_pullback' };
+    }
+
     // === 分支B：高波动趋势突破引擎 ===
     // 核心逻辑：SMA200趋势过滤 + 回撤企稳/突破入场 + 盈利加仓 + ATR/趋势退出
     if (position.units > 0) {
@@ -217,7 +281,8 @@ export function generateSignal(
 export function calculateUnitSize(
   totalAccountValue: number, 
   atr: number, 
-  volatility: number
+  volatility: number,
+  symbol?: string
 ): number {
   if (atr <= 0) return 0;
   
@@ -225,7 +290,9 @@ export function calculateUnitSize(
   
   // 自适应风险放大器：针对波动率超过 50% 的海龟突破策略
   // 肥尾对冲，放大单次搏趋势的绝对股数
-  if (volatility >= 0.80) {
+  if (symbol && volatility >= 0.50 && getHighVolSubtype(symbol) === 'oscillatory') {
+    riskPercent = 0.02;
+  } else if (volatility >= 0.80) {
     riskPercent = 0.04; // 极其疯狂的股票 (如 OKLO)，放大至 4%
   } else if (volatility >= 0.50) {
     riskPercent = 0.03; // 高波动股票 (如 TSLA)，放大至 3%

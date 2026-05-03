@@ -1,7 +1,7 @@
 import { logger } from '../utils/logger';
 import { LongbridgeService } from '../exchange/LongbridgeService';
 import { TurtlePosition } from '../models/TurtlePosition';
-import { 
+import {
   calculateTR, 
   calculateATR, 
   calculateSMA,
@@ -14,6 +14,7 @@ import {
   OHLC 
 } from '../strategy/TurtleIndicators';
 import { generateSignal, calculateUnitSize } from '../strategy/TurtleStrategy';
+import { getHighVolSubtype, getStockPool as resolveStockPool } from '../config/stockConfig';
 
 export function isTradingTime(date: Date = new Date()): boolean {
   // Convert to EST (UTC-5)
@@ -54,11 +55,7 @@ export function isTradingTime(date: Date = new Date()): boolean {
 }
 
 export function getStockPool(): string[] {
-  const envPool = process.env.STOCK_POOL;
-  if (envPool) {
-    return envPool.split(',').map(s => s.trim()).filter(s => s.length > 0);
-  }
-  return ['SPY.US', 'AAPL.US', 'TSLA.US'];
+  return resolveStockPool();
 }
 
 export class TradingBot {
@@ -174,7 +171,9 @@ export class TradingBot {
         const donchian20 = calculateDonchianChannel(highs, lows, 20);
         const donchian10 = calculateDonchianChannel(highs, lows, 10);
         
-        const strategyMode = (volatility < 0.50 && volatility200 < 0.50) ? '【趋势回调波段】(白马股)' : '【海龟突破】(题材/妖股)';
+        const strategyMode = (volatility < 0.50 && volatility200 < 0.50)
+          ? '【趋势回调波段】(白马股)'
+          : `【高波动${getHighVolSubtype(symbol) === 'oscillatory' ? '震荡回撤' : '趋势突破'}】`;
         logger.info(`[${symbol}] 历史年化波动率: 60d=${(volatility*100).toFixed(2)}%, 200d=${(volatility200*100).toFixed(2)}% -> 智能分配策略: ${strategyMode}`);
         logger.info(`ATR: ${atr.toFixed(2)}, SMA200: ${sma200.toFixed(2)}, SMA50: ${sma50.toFixed(2)}, RSI(14): ${rsi14.toFixed(2)}`);
 
@@ -210,12 +209,15 @@ export class TradingBot {
                targetEntryMsg = `目前处于熊市结构 (Price < SMA200), 系统禁止建仓`;
             }
           } else {
-            // 海龟突破策略：使用 55 日通道上轨判断入场
-            const targetBreakoutPrice = donchian55.upper;
-            if (currentPrice < targetBreakoutPrice) {
-              targetEntryMsg = `预测突破 $${targetBreakoutPrice.toFixed(2)} 时触发海龟入场 (动量追涨)`;
+            if (getHighVolSubtype(symbol) === 'oscillatory') {
+              targetEntryMsg = `等待高波动震荡股回调后重新站回 EMA21($${ema21.toFixed(2)}) 再入场，避免直接追涨`;
             } else {
-              targetEntryMsg = `正在突破或已持有`;
+              const targetBreakoutPrice = donchian55.upper;
+              if (currentPrice < targetBreakoutPrice) {
+                targetEntryMsg = `预测突破 $${targetBreakoutPrice.toFixed(2)} 时触发高波动趋势突破入场`;
+              } else {
+                targetEntryMsg = `正在突破或已持有`;
+              }
             }
           }
         }
@@ -236,7 +238,7 @@ export class TradingBot {
           const isDryRun = process.env.DRY_RUN !== 'false'; // 默认开启模拟测试，不发送真实订单
 
           if (signal.action === 'buy') {
-             const unitSize = calculateUnitSize(balanceInfo.totalCash, atr, volatility);
+             const unitSize = calculateUnitSize(balanceInfo.totalCash, atr, volatility, symbol);
              unitsToTrade = signal.suggestedUnits ? unitSize * signal.suggestedUnits : unitSize;
              if (unitsToTrade > 0) {
                 if (isDryRun) {

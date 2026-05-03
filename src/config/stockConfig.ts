@@ -1,4 +1,8 @@
 const DEFAULT_STOCK_POOL = ['SPY.US', 'AAPL.US', 'TSLA.US'];
+const DEFAULT_HIGH_VOL_TREND_STOCKS = ['OKLO.US', 'RIOT.US', 'TSLA.US', 'HOOD.US'];
+const DEFAULT_HIGH_VOL_OSCILLATORY_STOCKS = ['COIN.US', 'PDD.US'];
+
+export type HighVolSubtype = 'trend' | 'oscillatory';
 
 function parseCommaSeparatedSymbols(rawValue: string | undefined): string[] {
   if (!rawValue) {
@@ -20,6 +24,19 @@ export function getRequestedVStocks(): string[] {
   return parseCommaSeparatedSymbols(process.env.V_STOCK);
 }
 
+function getConfiguredSymbols(rawValue: string | undefined, defaults: string[]): string[] {
+  const parsed = parseCommaSeparatedSymbols(rawValue);
+  return parsed.length > 0 ? parsed : [...defaults];
+}
+
+export function getRequestedHighVolTrendStocks(): string[] {
+  return getConfiguredSymbols(process.env.HIGH_VOL_TREND_STOCKS, DEFAULT_HIGH_VOL_TREND_STOCKS);
+}
+
+export function getRequestedHighVolOscillatoryStocks(): string[] {
+  return getConfiguredSymbols(process.env.HIGH_VOL_OSCILLATORY_STOCKS, DEFAULT_HIGH_VOL_OSCILLATORY_STOCKS);
+}
+
 export function getVStocks(): Set<string> {
   const stockPool = new Set(getStockPool());
   return new Set(getRequestedVStocks().filter(symbol => stockPool.has(symbol)));
@@ -28,6 +45,24 @@ export function getVStocks(): Set<string> {
 export function getIgnoredVStocks(): string[] {
   const stockPool = new Set(getStockPool());
   return getRequestedVStocks().filter(symbol => !stockPool.has(symbol));
+}
+
+export function getHighVolOscillatoryStocks(): Set<string> {
+  const stockPool = new Set(getStockPool());
+  return new Set(getRequestedHighVolOscillatoryStocks().filter(symbol => stockPool.has(symbol)));
+}
+
+export function getHighVolTrendStocks(): Set<string> {
+  const stockPool = new Set(getStockPool());
+  const oscillatory = getHighVolOscillatoryStocks();
+  return new Set(
+    getRequestedHighVolTrendStocks().filter(symbol => stockPool.has(symbol) && !oscillatory.has(symbol))
+  );
+}
+
+export function getHighVolSubtype(symbol: string): HighVolSubtype {
+  const requestedOscillatory = new Set(getRequestedHighVolOscillatoryStocks());
+  return requestedOscillatory.has(symbol) ? 'oscillatory' : 'trend';
 }
 
 export const stockPool = getStockPool();
