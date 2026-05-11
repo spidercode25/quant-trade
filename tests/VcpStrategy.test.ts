@@ -27,11 +27,25 @@ describe('VcpStrategy', () => {
     });
   });
 
-  test('returns add-on signal for existing position near ema50 with tight bandwidth', () => {
+  test('holds when add-on price change is within 2 percent', () => {
     const position = new VcpPosition('NVDA.US');
-    position.units = 2;
+    position.units = 1;
+    position.entryPrices = [100];
 
     const signal = generateVcpSignal(position, 101, 100, 100, 2, 1.2, 0.07, 99, 1.5);
+
+    expect(signal).toEqual({
+      action: 'hold',
+      reason: 'trend_continuation',
+    });
+  });
+
+  test('returns add-on signal when price change exceeds 2 percent', () => {
+    const position = new VcpPosition('NVDA.US');
+    position.units = 1;
+    position.entryPrices = [100];
+
+    const signal = generateVcpSignal(position, 105, 100, 103, 2, 1.2, 0.07, 99, 1.5);
 
     expect(signal).toEqual({
       action: 'buy',

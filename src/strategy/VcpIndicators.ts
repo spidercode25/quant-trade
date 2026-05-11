@@ -53,12 +53,33 @@ export function calculateBollingerBandwidth(prices: number[], period: number): n
 
 export function calculateORHigh(intradayCandles: OHLC[]): number {
   if (intradayCandles.length === 0) {
-    return 0;
+    return Infinity;
   }
 
-  let highestHigh = intradayCandles[0].high;
+  const datedCandles = intradayCandles.filter(
+    (candle): candle is OHLC & { time: Date } => candle.time instanceof Date
+  );
 
-  for (const candle of intradayCandles) {
+  if (datedCandles.length === 0) {
+    return Infinity;
+  }
+
+  const sortedCandles = [...datedCandles].sort(
+    (left, right) => left.time.getTime() - right.time.getTime()
+  );
+  const mostRecentDate = sortedCandles[sortedCandles.length - 1].time.toISOString().split('T')[0];
+  const todayCandles = sortedCandles.filter(
+    candle => candle.time.toISOString().split('T')[0] === mostRecentDate
+  );
+  const openingCandles = todayCandles.slice(0, 2);
+
+  if (openingCandles.length === 0) {
+    return Infinity;
+  }
+
+  let highestHigh = openingCandles[0].high;
+
+  for (const candle of openingCandles) {
     if (candle.high > highestHigh) {
       highestHigh = candle.high;
     }

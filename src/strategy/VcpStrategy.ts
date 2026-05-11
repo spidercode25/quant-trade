@@ -21,7 +21,14 @@ export function generateVcpSignal(
 
     const isNearEma50 = currentPrice >= ema50 * 0.98 && currentPrice <= ema50 * 1.02;
     if (isNearEma50 && bandwidth < 0.08) {
-      return { action: 'buy', reason: 'vcp_addon_pullback', suggestedUnits: 1 };
+      if (position.units < 4) {
+        const lastEntryPrice = position.entryPrices.length > 0 ? position.entryPrices[position.entryPrices.length - 1] : 0;
+        const priceDiffRatio = lastEntryPrice > 0 ? Math.abs(currentPrice - lastEntryPrice) / lastEntryPrice : 1;
+
+        if (priceDiffRatio > 0.02) {
+          return { action: 'buy', reason: 'vcp_addon_pullback', suggestedUnits: 1 };
+        }
+      }
     }
 
     return { action: 'hold', reason: 'trend_continuation' };

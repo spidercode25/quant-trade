@@ -194,7 +194,7 @@ export class TradingBot {
           const alignedBenchmarkPrices = benchmarkPrices.slice(-alignedLength);
           const mansfieldPeriod = alignedLength > 1 ? Math.min(200, alignedLength - 1) : 1;
           const mansfieldRs = calculateMansfieldRS(alignedStockPrices, alignedBenchmarkPrices, mansfieldPeriod);
-          const intradayCandles = await this.service.getIntradayCandlesticks(symbol, Period.Min_15, 1);
+          const intradayCandles = await this.service.getIntradayCandlesticks(symbol, Period.Min_15, 26);
           const openingRangeHigh = calculateORHigh(intradayCandles as OHLC[]);
           const volumeRatio = await this.service.getQuoteVolumeRatio(symbol);
           const bandwidth = calculateBollingerBandwidth(stockPrices, 20);
