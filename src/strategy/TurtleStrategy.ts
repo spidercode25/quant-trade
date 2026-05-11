@@ -1,13 +1,7 @@
 import { getHighVolSubtype } from '../config/stockConfig';
 import { TurtlePosition } from '../models/TurtlePosition';
 import { DonchianChannel, BollingerBands } from './TurtleIndicators';
-
-export interface TradeSignal {
-  action: 'buy' | 'sell' | 'hold';
-  reason: string;
-  suggestedUnits?: number;
-  sellProportion?: number; // 卖出比例 (0~1)
-}
+import type { TradeSignal } from './types';
 
 type FullGenerateSignalArgs = [
   TurtlePosition,
