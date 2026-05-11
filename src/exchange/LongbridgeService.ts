@@ -8,9 +8,19 @@ import {
   Decimal,
   Period,
   AdjustType,
-  TradeSessions
+  TradeSessions,
+  CalcIndex
 } from 'longport';
 import { logger } from '../utils/logger';
+
+export interface OHLC {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  time: Date;
+}
 
 export class LongbridgeService {
   private config: Config;
@@ -92,5 +102,35 @@ export class LongbridgeService {
     });
     
     return resp;
+  }
+
+  async getIntradayCandlesticks(symbol: string, period: Period, count: number): Promise<OHLC[]> {
+    if (!this.quoteCtx) throw new Error('QuoteContext not initialized');
+    const candles = await this.quoteCtx.historyCandlesticksByOffset(
+      symbol,
+      period,
+      AdjustType.NoAdjust,
+      false,          // forward=false → most recent candles
+      null,           // datetime=null → from now
+      count,
+      TradeSessions.Intraday
+    );
+    return candles.map(c => ({
+      open: Number(c.open.toString()),
+      high: Number(c.high.toString()),
+      low: Number(c.low.toString()),
+      close: Number(c.close.toString()),
+      volume: c.volume,
+      time: c.timestamp
+    }));
+  }
+
+  async getQuoteVolumeRatio(symbol: string): Promise<number> {
+    if (!this.quoteCtx) throw new Error('QuoteContext not initialized');
+    const results = await this.quoteCtx.calcIndexes([symbol], [CalcIndex.VolumeRatio]);
+    if (results.length > 0 && results[0].volumeRatio) {
+      return Number(results[0].volumeRatio.toString());
+    }
+    return 1.0;
   }
 }

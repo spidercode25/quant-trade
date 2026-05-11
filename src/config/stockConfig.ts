@@ -1,6 +1,7 @@
 const DEFAULT_STOCK_POOL = ['SPY.US', 'AAPL.US', 'TSLA.US'];
 const DEFAULT_HIGH_VOL_TREND_STOCKS = ['OKLO.US', 'RIOT.US', 'TSLA.US', 'HOOD.US'];
 const DEFAULT_HIGH_VOL_OSCILLATORY_STOCKS = ['COIN.US', 'PDD.US'];
+const DEFAULT_VCP_STOCKS = ['NVDA.US', 'PLTR.US'];
 
 export type HighVolSubtype = 'trend' | 'oscillatory';
 
@@ -24,6 +25,10 @@ export function getRequestedVStocks(): string[] {
   return parseCommaSeparatedSymbols(process.env.V_STOCK);
 }
 
+export function getRequestedVcpStocks(): string[] {
+  return getConfiguredSymbols(process.env.VCP_STOCKS, DEFAULT_VCP_STOCKS);
+}
+
 function getConfiguredSymbols(rawValue: string | undefined, defaults: string[]): string[] {
   const parsed = parseCommaSeparatedSymbols(rawValue);
   return parsed.length > 0 ? parsed : [...defaults];
@@ -40,6 +45,11 @@ export function getRequestedHighVolOscillatoryStocks(): string[] {
 export function getVStocks(): Set<string> {
   const stockPool = new Set(getStockPool());
   return new Set(getRequestedVStocks().filter(symbol => stockPool.has(symbol)));
+}
+
+export function getVcpStocks(): Set<string> {
+  const stockPool = new Set(getStockPool());
+  return new Set(getRequestedVcpStocks().filter(symbol => stockPool.has(symbol)));
 }
 
 export function getIgnoredVStocks(): string[] {
@@ -67,10 +77,16 @@ export function getHighVolSubtype(symbol: string): HighVolSubtype {
 
 export const stockPool = getStockPool();
 export const requestedVStocks = getRequestedVStocks();
+export const requestedVcpStocks = getRequestedVcpStocks();
 export const vStocks = getVStocks();
+export const vcpStocks = getVcpStocks();
 export const ignoredVStocks = getIgnoredVStocks();
 
 export function isVStock(symbol: string): boolean {
   // 运行时重新计算，而不是使用模块加载时的静态常量
   return getVStocks().has(symbol);
+}
+
+export function isVcpStock(symbol: string): boolean {
+  return getVcpStocks().has(symbol);
 }
