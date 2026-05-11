@@ -78,9 +78,13 @@ function installFixedDate(now: Date): () => void {
 }
 
 function buildHistory(length: number, mode: 'flat' | 'volatile'): OHLC[] {
+  const breakoutTail = [150, 160, 150, 160, 150, 160, 150, 160, 150, 160, 170, 180, 190, 180, 190];
+
   return Array.from({ length }, (_, index) => {
     const close = mode === 'volatile'
-      ? (index === length - 1 ? 200 : index % 2 === 0 ? 50 : 150)
+      ? (index < length - 16
+        ? (index % 2 === 0 ? 50 : 150)
+        : (index < length - 1 ? breakoutTail[index - (length - 16)] : 200))
       : 100;
 
     return {

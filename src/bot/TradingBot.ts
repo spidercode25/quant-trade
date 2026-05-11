@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger';
 import { LongbridgeService } from '../exchange/LongbridgeService';
 import { TurtlePosition } from '../models/TurtlePosition';
+import { VcpPosition } from '../models/VcpPosition';
 import {
   calculateTR, 
   calculateATR, 
@@ -14,7 +15,10 @@ import {
   OHLC 
 } from '../strategy/TurtleIndicators';
 import { generateSignal, calculateUnitSize } from '../strategy/TurtleStrategy';
-import { getHighVolSubtype, getStockPool as resolveStockPool } from '../config/stockConfig';
+import { generateVcpSignal } from '../strategy/VcpStrategy';
+import { getHighVolSubtype, getStockPool as resolveStockPool, isVcpStock } from '../config/stockConfig';
+import { calculateMansfieldRS, calculateBollingerBandwidth, calculateORHigh } from '../strategy/VcpIndicators';
+import { Period } from 'longport';
 
 export function isTradingTime(date: Date = new Date()): boolean {
   // Convert to EST (UTC-5)
@@ -61,6 +65,7 @@ export function getStockPool(): string[] {
 export class TradingBot {
   private service: LongbridgeService;
   private positions: Map<string, TurtlePosition> = new Map();
+  private vcpPositions: Map<string, VcpPosition> = new Map();
   private isRunning: boolean = false;
 
   constructor() {
@@ -130,11 +135,6 @@ export class TradingBot {
     // ---------------------------------
 
     for (const symbol of symbols) {
-      if (!this.positions.has(symbol)) {
-        this.positions.set(symbol, new TurtlePosition(symbol));
-      }
-      const position = this.positions.get(symbol)!;
-
       try {
         logger.info(`获取历史数据: ${symbol}`);
         // 增加到250天以保证可以计算SMA200
@@ -156,18 +156,19 @@ export class TradingBot {
         const recentTrs = trValues.slice(-14);
         const atr = calculateATR(recentTrs);
 
-        const closes = history.map(c => c.close);
-        const sma200 = calculateSMA(closes, 200);
-        const sma50 = calculateSMA(closes, 50);
-        const ema21 = calculateEMA(closes, 21);
-        const rsi14 = calculateRSI(closes, 14);
-        const volatility = calculateVolatility(closes, 60);
-        const volatility200 = calculateVolatility(closes, 200);
+        const stockPrices = Array.from(history, candle => candle.close);
+        const sma200 = calculateSMA(stockPrices, 200);
+        const sma50 = calculateSMA(stockPrices, 50);
+        const ema21 = calculateEMA(stockPrices, 21);
+        const ema50 = calculateEMA(stockPrices, 50);
+        const rsi14 = calculateRSI(stockPrices, 14);
+        const volatility = calculateVolatility(stockPrices, 60);
+        const volatility200 = calculateVolatility(stockPrices, 200);
 
         const highs = history.map(c => c.high);
         const lows = history.map(c => c.low);
         const donchian55 = calculateDonchianChannel(highs, lows, 55);
-        const bb20_2_5 = calculateBollingerBands(closes, 20, 2.0);
+        const bb20_2_5 = calculateBollingerBands(stockPrices, 20, 2.0);
         const donchian20 = calculateDonchianChannel(highs, lows, 20);
         const donchian10 = calculateDonchianChannel(highs, lows, 10);
         
@@ -177,10 +178,94 @@ export class TradingBot {
         logger.info(`[${symbol}] 历史年化波动率: 60d=${(volatility*100).toFixed(2)}%, 200d=${(volatility200*100).toFixed(2)}% -> 智能分配策略: ${strategyMode}`);
         logger.info(`ATR: ${atr.toFixed(2)}, SMA200: ${sma200.toFixed(2)}, SMA50: ${sma50.toFixed(2)}, RSI(14): ${rsi14.toFixed(2)}`);
 
-        // === 预测入场点位 (Predict Target Entry Price) ===
         const currentPrice = await this.service.getCurrentPrice(symbol);
+        logger.info(`当前价格: ${currentPrice}`);
+
+        if (isVcpStock(symbol)) {
+          if (!this.vcpPositions.has(symbol)) {
+            this.vcpPositions.set(symbol, new VcpPosition(symbol));
+          }
+
+          const position = this.vcpPositions.get(symbol)!;
+          const benchmarkHistory = await this.service.getHistoryCandlesticks('SPY.US', history.length);
+          const benchmarkPrices = Array.from(benchmarkHistory, candle => candle.close);
+          const alignedLength = Math.min(stockPrices.length, benchmarkPrices.length);
+          const alignedStockPrices = stockPrices.slice(-alignedLength);
+          const alignedBenchmarkPrices = benchmarkPrices.slice(-alignedLength);
+          const mansfieldPeriod = alignedLength > 1 ? Math.min(200, alignedLength - 1) : 1;
+          const mansfieldRs = calculateMansfieldRS(alignedStockPrices, alignedBenchmarkPrices, mansfieldPeriod);
+          const intradayCandles = await this.service.getIntradayCandlesticks(symbol, Period.Min_15, 1);
+          const openingRangeHigh = calculateORHigh(intradayCandles as OHLC[]);
+          const volumeRatio = await this.service.getQuoteVolumeRatio(symbol);
+          const bandwidth = calculateBollingerBandwidth(stockPrices, 20);
+
+          logger.info(`生成 VCP 信号: ${symbol}`);
+          logger.info(`VCP指标: EMA21=${ema21.toFixed(2)}, EMA50=${ema50.toFixed(2)}, ATR=${atr.toFixed(2)}, RS=${mansfieldRs.toFixed(4)}, Bandwidth=${bandwidth.toFixed(4)}, ORH=${openingRangeHigh.toFixed(2)}, VolumeRatio=${volumeRatio.toFixed(2)}`);
+
+          const signal = generateVcpSignal(
+            position,
+            currentPrice,
+            ema21,
+            ema50,
+            atr,
+            mansfieldRs,
+            bandwidth,
+            openingRangeHigh,
+            volumeRatio
+          );
+
+          logger.info(`VCP信号结果: ${signal.action} (理由: ${signal.reason})`);
+
+          if (signal.action === 'buy' || signal.action === 'sell') {
+            const balanceInfo = await this.service.getAccountBalance();
+            const isDryRun = process.env.DRY_RUN !== 'false';
+
+            if (signal.action === 'buy') {
+              const unitSize = calculateUnitSize(balanceInfo.totalCash, atr, volatility, symbol);
+              const sharesToBuy = signal.suggestedUnits ? unitSize * signal.suggestedUnits : unitSize;
+
+              if (sharesToBuy > 0) {
+                if (isDryRun) {
+                  logger.info(`【模拟测试】VCP买入订单已生成 (拦截真实交易), 数量: ${sharesToBuy}`);
+                } else {
+                  const resp = await this.service.submitOrder(symbol, 'buy', sharesToBuy);
+                  logger.info(`VCP买入订单已提交, 数量: ${sharesToBuy}, 返回: ${JSON.stringify(resp)}`);
+                }
+
+                position.addUnit(currentPrice, sharesToBuy, currentPrice - 2 * atr, mansfieldRs, openingRangeHigh);
+              }
+            } else {
+              const proportion = signal.sellProportion ?? 1.0;
+              const sharesToSell = Math.floor(position.totalShares * proportion);
+
+              if (sharesToSell > 0) {
+                if (isDryRun) {
+                  logger.info(`【模拟测试】VCP卖出订单已生成 (拦截真实交易), 数量: ${sharesToSell} (比例: ${proportion})`);
+                } else {
+                  const resp = await this.service.submitOrder(symbol, 'sell', sharesToSell);
+                  logger.info(`VCP卖出订单已提交, 数量: ${sharesToSell}, 返回: ${JSON.stringify(resp)}`);
+                }
+
+                if (proportion >= 1.0) {
+                  position.clear();
+                } else {
+                  position.adjustForPartialSell(proportion);
+                }
+              }
+            }
+          }
+
+          continue;
+        }
+
+        if (!this.positions.has(symbol)) {
+          this.positions.set(symbol, new TurtlePosition(symbol));
+        }
+        const position = this.positions.get(symbol)!;
+
+        // === 预测入场点位 (Predict Target Entry Price) ===
         let targetEntryMsg = '';
-        
+
         if (position.units > 0) {
           // 已有持仓，预测出场和加仓点
           const stopLossPrice = position.stopLossPrice;
@@ -190,7 +275,7 @@ export class TradingBot {
             const exit10DayPrice = donchian10.lower;
             const lastEntry = position.lastEntryPrice || 0;
             const pyramidPrice = lastEntry + 0.5 * atr;
-            
+
             targetEntryMsg = `当前持仓 ${position.totalShares} 股。`;
             if (position.units < 4) {
               targetEntryMsg += `预测突破 $${pyramidPrice.toFixed(2)} (+0.5N) 加仓；`;
@@ -221,10 +306,8 @@ export class TradingBot {
             }
           }
         }
-        
+
         logger.info(`🎯 [盘前预测] ${targetEntryMsg}`);
-        
-        logger.info(`当前价格: ${currentPrice}`);
 
         logger.info(`生成信号: ${symbol}`);
         const signal = generateSignal(position, currentPrice, sma200, sma50, ema21, rsi14, donchian55, bb20_2_5, donchian20, donchian10, atr, volatility, volatility200, isMarketPanic);
