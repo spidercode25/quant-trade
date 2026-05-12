@@ -5,7 +5,7 @@ describe('VcpStrategy', () => {
   test('returns breakout entry when flat and all entry conditions are satisfied', () => {
     const position = new VcpPosition('NVDA.US');
 
-    const signal = generateVcpSignal(position, 105, 100, 95, 2, 1.1, 0.09, 102, 2.1);
+    const signal = generateVcpSignal(position, 105, 100, 95, 2, 1.1, 0.09, 102, 1000, 500, 600);
 
     expect(signal).toEqual({
       action: 'buy',
@@ -18,7 +18,7 @@ describe('VcpStrategy', () => {
     const position = new VcpPosition('NVDA.US');
     position.units = 1;
 
-    const signal = generateVcpSignal(position, 99, 100, 101, 2, 1.2, 0.05, 98, 3);
+    const signal = generateVcpSignal(position, 99, 100, 101, 2, 1.2, 0.05, 98, 1000, 500, 600);
 
     expect(signal).toEqual({
       action: 'sell',
@@ -32,7 +32,7 @@ describe('VcpStrategy', () => {
     position.units = 1;
     position.entryPrices = [100];
 
-    const signal = generateVcpSignal(position, 101, 100, 100, 2, 1.2, 0.07, 99, 1.5);
+    const signal = generateVcpSignal(position, 101, 100, 100, 2, 1.2, 0.07, 99, 1000, 500, 600);
 
     expect(signal).toEqual({
       action: 'hold',
@@ -45,7 +45,7 @@ describe('VcpStrategy', () => {
     position.units = 1;
     position.entryPrices = [100];
 
-    const signal = generateVcpSignal(position, 105, 100, 103, 2, 1.2, 0.07, 99, 1.5);
+    const signal = generateVcpSignal(position, 105, 100, 103, 2, 1.2, 0.07, 99, 1000, 500, 600);
 
     expect(signal).toEqual({
       action: 'buy',
@@ -58,7 +58,7 @@ describe('VcpStrategy', () => {
     const position = new VcpPosition('NVDA.US');
     position.units = 1;
 
-    const signal = generateVcpSignal(position, 105, 100, 95, 2, 1.3, 0.09, 104, 2.5);
+    const signal = generateVcpSignal(position, 105, 100, 95, 2, 1.3, 0.09, 104, 1000, 500, 600);
 
     expect(signal).toEqual({
       action: 'hold',
@@ -69,7 +69,8 @@ describe('VcpStrategy', () => {
   test('holds flat position when setup is not ready', () => {
     const position = new VcpPosition('NVDA.US');
 
-    const signal = generateVcpSignal(position, 101, 100, 95, 2, 1.0, 0.10, 102, 2.0);
+    // Make RS negative so it fails the breakout condition (rs > 0)
+    const signal = generateVcpSignal(position, 101, 100, 95, 2, -0.5, 0.10, 102, 1000, 500, 600);
 
     expect(signal).toEqual({
       action: 'hold',

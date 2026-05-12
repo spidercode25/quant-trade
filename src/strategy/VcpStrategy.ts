@@ -10,7 +10,9 @@ export function generateVcpSignal(
   rs: number,
   bandwidth: number,
   orHigh: number,
-  volumeRatio: number,
+  currentVolume: number,
+  vma5: number,
+  vma10: number,
 ): TradeSignal {
   void atr;
 
@@ -36,10 +38,10 @@ export function generateVcpSignal(
 
   if (
     currentPrice > ema21
-    && currentPrice > orHigh
-    && bandwidth < 0.10
-    && volumeRatio > 2.0
-    && rs > 1.0
+    && bandwidth < 0.20 // Relaxed bandwidth for daily data backtest
+    && currentVolume > vma5 // VOL-TDX 放量比较
+    && currentVolume > vma10
+    && rs > 0 // Mansfield RS > 0 means outperforming benchmark
   ) {
     return { action: 'buy', reason: 'vcp_breakout_entry', suggestedUnits: 1 };
   }

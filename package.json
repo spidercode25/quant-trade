@@ -9,6 +9,7 @@
     "dev": "ts-node src/index.ts",
     "test": "jest",
     "backtest": "ts-node src/backtest.ts",
+    "backtest:vcp": "ts-node src/backtest-vcp.ts",
     "lint": "eslint src/**/*.ts"
   },
   "keywords": [

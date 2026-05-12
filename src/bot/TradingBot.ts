@@ -181,6 +181,11 @@ export class TradingBot {
         const currentPrice = await this.service.getCurrentPrice(symbol);
         logger.info(`当前价格: ${currentPrice}`);
 
+        const volumes = history.map((c) => (c as any).volume || 0);
+        const vma5 = calculateSMA(volumes, 5);
+        const vma10 = calculateSMA(volumes, 10);
+        const currentVolume = (history[history.length - 1] as any).volume || 0;
+
         if (isVcpStock(symbol)) {
           if (!this.vcpPositions.has(symbol)) {
             this.vcpPositions.set(symbol, new VcpPosition(symbol));
@@ -196,11 +201,10 @@ export class TradingBot {
           const mansfieldRs = calculateMansfieldRS(alignedStockPrices, alignedBenchmarkPrices, mansfieldPeriod);
           const intradayCandles = await this.service.getIntradayCandlesticks(symbol, Period.Min_15, 26);
           const openingRangeHigh = calculateORHigh(intradayCandles as OHLC[]);
-          const volumeRatio = await this.service.getQuoteVolumeRatio(symbol);
           const bandwidth = calculateBollingerBandwidth(stockPrices, 20);
 
           logger.info(`生成 VCP 信号: ${symbol}`);
-          logger.info(`VCP指标: EMA21=${ema21.toFixed(2)}, EMA50=${ema50.toFixed(2)}, ATR=${atr.toFixed(2)}, RS=${mansfieldRs.toFixed(4)}, Bandwidth=${bandwidth.toFixed(4)}, ORH=${openingRangeHigh.toFixed(2)}, VolumeRatio=${volumeRatio.toFixed(2)}`);
+          logger.info(`VCP指标: EMA21=${ema21.toFixed(2)}, EMA50=${ema50.toFixed(2)}, ATR=${atr.toFixed(2)}, RS=${mansfieldRs.toFixed(4)}, Bandwidth=${bandwidth.toFixed(4)}, Vol=${currentVolume}, VMA5=${vma5.toFixed(0)}, VMA10=${vma10.toFixed(0)}, ORH=${openingRangeHigh.toFixed(2)}`);
 
           const signal = generateVcpSignal(
             position,
@@ -211,7 +215,9 @@ export class TradingBot {
             mansfieldRs,
             bandwidth,
             openingRangeHigh,
-            volumeRatio
+            currentVolume,
+            vma5,
+            vma10
           );
 
           logger.info(`VCP信号结果: ${signal.action} (理由: ${signal.reason})`);
