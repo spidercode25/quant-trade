@@ -203,14 +203,25 @@ export class TradingBot {
           const openingRangeHigh = calculateORHigh(intradayCandles as OHLC[]);
           const bandwidth = calculateBollingerBandwidth(stockPrices, 20);
 
+          const closedHistory = history.slice(0, -1);
+          const closedStockPrices = closedHistory.map(c => c.close);
+          const sma150 = calculateSMA(closedStockPrices, 150);
+          const sma200 = calculateSMA(closedStockPrices, 200);
+          const closedHighs = closedHistory.map(c => c.high);
+          const closedLows = closedHistory.map(c => c.low);
+          const donchian20Upper = calculateDonchianChannel(closedHighs, closedLows, 20).upper;
+
           logger.info(`生成 VCP 信号: ${symbol}`);
-          logger.info(`VCP指标: EMA21=${ema21.toFixed(2)}, EMA50=${ema50.toFixed(2)}, ATR=${atr.toFixed(2)}, RS=${mansfieldRs.toFixed(4)}, Bandwidth=${bandwidth.toFixed(4)}, Vol=${currentVolume}, VMA5=${vma5.toFixed(0)}, VMA10=${vma10.toFixed(0)}, ORH=${openingRangeHigh.toFixed(2)}`);
+          logger.info(`VCP指标: EMA21=${ema21.toFixed(2)}, SMA50=${sma50.toFixed(2)}, SMA150=${sma150.toFixed(2)}, SMA200=${sma200.toFixed(2)}, Donchian20U=${donchian20Upper.toFixed(2)}, ATR=${atr.toFixed(2)}, RS=${mansfieldRs.toFixed(4)}, Bandwidth=${bandwidth.toFixed(4)}, Vol=${currentVolume}, VMA5=${vma5.toFixed(0)}, VMA10=${vma10.toFixed(0)}, ORH=${openingRangeHigh.toFixed(2)}`);
 
           const signal = generateVcpSignal(
             position,
             currentPrice,
             ema21,
-            ema50,
+            sma50,
+            sma150,
+            sma200,
+            donchian20Upper,
             atr,
             mansfieldRs,
             bandwidth,

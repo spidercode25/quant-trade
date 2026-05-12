@@ -162,11 +162,13 @@ async function runBacktestVcp() {
       logger.info(`获取到 ${history.length} 天的历史数据，从 ${startDate} 到 ${endDate}`);
 
       for (let i = 210; i < history.length; i += 1) {
-        const candlesToDate = history.slice(0, i + 1);
-        const today = candlesToDate[candlesToDate.length - 1];
-        const currentPrice = today.close;
+        const candlesToDate = history.slice(0, i);
+        const today = history[i];
+        const currentPrice = today.open;
         const closes = candlesToDate.map(candle => candle.close);
         const volumes = candlesToDate.map(candle => candle.volume || 0);
+        const yesterdayVolume = candlesToDate[candlesToDate.length - 1].volume || 0;
+        const donchian20Upper = Math.max(...candlesToDate.slice(-20).map(candle => candle.high));
 
         const trValues: number[] = [];
         for (let j = 1; j < candlesToDate.length; j += 1) {
@@ -175,6 +177,8 @@ async function runBacktestVcp() {
 
         const atr = calculateATR(trValues.slice(-14));
         const sma50 = calculateSMA(closes, 50);
+        const sma150 = calculateSMA(closes, 150);
+        const sma200 = calculateSMA(closes, 200);
         const ema21 = calculateEMA(closes, 21);
         const volatility = calculateVolatility(closes, 60);
 
@@ -183,7 +187,7 @@ async function runBacktestVcp() {
         // Calculate volumes for VOL-TDX
         const vma5 = calculateSMA(volumes, 5);
         const vma10 = calculateSMA(volumes, 10);
-        const currentVolume = today.volume || 0;
+        const currentVolume = yesterdayVolume;
 
         // align benchmark dates
         const aligned = alignBenchmarkPrices(candlesToDate, benchmarkByDate);
@@ -193,11 +197,29 @@ async function runBacktestVcp() {
             ? calculateMansfieldRS(aligned.stockPrices, aligned.benchmarkPrices, rsPeriod)
             : 0;
 
+        if (position.units > 0 && position.stopLossPrice > 0 && today.low <= position.stopLossPrice) {
+          const exitPrice = Math.min(today.open, position.stopLossPrice);
+          cash += position.totalShares * exitPrice;
+          trades.push({
+            date: toDateKey(today.time),
+            action: 'SELL',
+            price: exitPrice,
+            units: position.totalShares,
+            reason: 'stop_loss_hit',
+            cashLeft: cash,
+          });
+          position.clear();
+          continue;
+        }
+
         const signal = generateVcpSignal(
           position,
           currentPrice,
           ema21,
           sma50,
+          sma150,
+          sma200,
+          donchian20Upper,
           atr,
           rs,
           bandwidth,
@@ -207,27 +229,23 @@ async function runBacktestVcp() {
           vma10,
         );
 
-        // Debug logging for the first 10 days of NVDA
-        // if (symbol === 'NVDA.US' && i >= 210 && i < 220) {
-        //   logger.info(`[DEBUG ${symbol}] P: ${currentPrice.toFixed(2)} | EMA21: ${ema21.toFixed(2)} | RS: ${rs.toFixed(2)} | BW: ${bandwidth.toFixed(3)} | VR: ${dailyVolumeRatio.toFixed(2)}`);
-        // }
-
         if (signal.action === 'buy') {
           const currentHoldingsValue = position.totalShares * currentPrice;
           const totalAccountValue = cash + currentHoldingsValue;
           const sharesToBuyPerUnit = calculateUnitSize(totalAccountValue, atr, volatility, symbol);
           const sharesToBuy = signal.suggestedUnits ? sharesToBuyPerUnit * signal.suggestedUnits : sharesToBuyPerUnit;
+          const executionPrice = Math.max(today.open, donchian20Upper);
 
           if (sharesToBuy > 0) {
-            const cost = sharesToBuy * currentPrice;
+            const cost = sharesToBuy * executionPrice;
             if (cash >= cost) {
               const actionLabel = position.units === 0 ? 'BUY' : 'BUY_ADD';
               cash -= cost;
-              position.addUnit(currentPrice, sharesToBuy, currentPrice - 2 * atr, rs, 0);
+              position.addUnit(executionPrice, sharesToBuy, executionPrice * 0.92, rs, 0);
               trades.push({
                 date: toDateKey(today.time),
                 action: actionLabel,
-                price: currentPrice,
+                price: executionPrice,
                 units: sharesToBuy,
                 reason: signal.reason,
                 cashLeft: cash,
