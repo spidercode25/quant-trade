@@ -12,6 +12,7 @@ describe('VcpPosition', () => {
     expect(position.vcpStage).toBe(1);
     expect(position.orHighReference).toBeNull();
     expect(position.rsAtEntry).toBeNull();
+    expect(position.highestPriceSinceEntry).toBe(0);
   });
 
   test('addUnit stores position data and optional references', () => {
@@ -27,11 +28,25 @@ describe('VcpPosition', () => {
     expect(position.orHighReference).toBe(103);
   });
 
-  test('clear resets VCP state', () => {
+  test('updateHighestPrice tracks highest price since entry', () => {
+    const position = new VcpPosition('AAPL.US');
+
+    position.updateHighestPrice(100);
+    expect(position.highestPriceSinceEntry).toBe(100);
+
+    position.updateHighestPrice(105);
+    expect(position.highestPriceSinceEntry).toBe(105);
+
+    position.updateHighestPrice(102);
+    expect(position.highestPriceSinceEntry).toBe(105);
+  });
+
+  test('clear resets VCP state including highestPriceSinceEntry', () => {
     const position = new VcpPosition('AAPL.US');
 
     position.addUnit(100, 10, 95, 82, 103);
     position.vcpStage = 3;
+    position.updateHighestPrice(110);
 
     position.clear();
 
@@ -42,6 +57,7 @@ describe('VcpPosition', () => {
     expect(position.vcpStage).toBe(1);
     expect(position.orHighReference).toBeNull();
     expect(position.rsAtEntry).toBeNull();
+    expect(position.highestPriceSinceEntry).toBe(0);
   });
 
   test('adjustForPartialSell reduces shares and clears on full exit', () => {

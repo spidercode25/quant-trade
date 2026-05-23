@@ -201,35 +201,65 @@ export class TradingBot {
           const mansfieldRs = calculateMansfieldRS(alignedStockPrices, alignedBenchmarkPrices, mansfieldPeriod);
           const intradayCandles = await this.service.getIntradayCandlesticks(symbol, Period.Min_15, 26);
           const openingRangeHigh = calculateORHigh(intradayCandles as OHLC[]);
-          const bandwidth = calculateBollingerBandwidth(stockPrices, 20);
 
+          // Update highest price for trailing stop
+          if (position.units > 0) {
+            position.updateHighestPrice(currentPrice);
+          }
+
+          // Calculate indicators using closed history (avoid lookahead bias)
           const closedHistory = history.slice(0, -1);
           const closedStockPrices = closedHistory.map(c => c.close);
-          const sma150 = calculateSMA(closedStockPrices, 150);
-          const sma200 = calculateSMA(closedStockPrices, 200);
-          const closedHighs = closedHistory.map(c => c.high);
-          const closedLows = closedHistory.map(c => c.low);
-          const donchian20Upper = calculateDonchianChannel(closedHighs, closedLows, 20).upper;
+          const closedVolumes = closedHistory.map(c => (c as any).volume || 0);
+          const ema50Closed = calculateEMA(closedStockPrices, 50);
+          const ema200Closed = calculateEMA(closedStockPrices, 200);
+          const vma20Closed = calculateSMA(closedVolumes, 20);
+          const vma5Closed = calculateSMA(closedVolumes.slice(-5), 5);
+
+          // Calculate EMA21 slope
+          const ema21Yesterday = closedStockPrices.length >= 22
+            ? calculateEMA(closedStockPrices.slice(0, -1), 21)
+            : ema21;
+          const ema21Slope = ema21Yesterday > 0 ? (ema21 - ema21Yesterday) / ema21Yesterday : 0;
+
+          // Calculate EMA50 slope
+          const ema50Yesterday = closedStockPrices.length >= 51
+            ? calculateEMA(closedStockPrices.slice(0, -1), 50)
+            : ema50Closed;
+          const ema50Slope = ema50Yesterday > 0 ? (ema50Closed - ema50Yesterday) / ema50Yesterday : 0;
+
+          // Yesterday's volume
+          const yesterdayVolume = closedVolumes.length > 0 ? closedVolumes[closedVolumes.length - 1] : 0;
+
+          // VWAP approximation (use current price for live mode)
+          const vwap = currentPrice;
 
           logger.info(`生成 VCP 信号: ${symbol}`);
-          logger.info(`VCP指标: EMA21=${ema21.toFixed(2)}, SMA50=${sma50.toFixed(2)}, SMA150=${sma150.toFixed(2)}, SMA200=${sma200.toFixed(2)}, Donchian20U=${donchian20Upper.toFixed(2)}, ATR=${atr.toFixed(2)}, RS=${mansfieldRs.toFixed(4)}, Bandwidth=${bandwidth.toFixed(4)}, Vol=${currentVolume}, VMA5=${vma5.toFixed(0)}, VMA10=${vma10.toFixed(0)}, ORH=${openingRangeHigh.toFixed(2)}`);
+          logger.info(`VCP指标: EMA21=${ema21.toFixed(2)}, EMA50=${ema50Closed.toFixed(2)}, EMA200=${ema200Closed.toFixed(2)}, ATR=${atr.toFixed(2)}, RS=${mansfieldRs.toFixed(4)}, Vol=${currentVolume}, VMA20=${vma20Closed.toFixed(0)}, VMA5=${vma5Closed.toFixed(0)}, YesterdayVol=${yesterdayVolume.toFixed(0)}, ORH=${openingRangeHigh.toFixed(2)}, EMA21Slope=${ema21Slope.toFixed(6)}, EMA50Slope=${ema50Slope.toFixed(6)}, HighestPrice=${position.highestPriceSinceEntry.toFixed(2)}`);
 
-          const signal = generateVcpSignal(
+          const signal = generateVcpSignal({
             position,
-            currentPrice,
+            price: currentPrice,
+            open: currentPrice,
+            close: currentPrice,
+            high: currentPrice,
+            low: currentPrice,
             ema21,
-            sma50,
-            sma150,
-            sma200,
-            donchian20Upper,
+            ema50: ema50Closed,
+            ema200: ema200Closed,
             atr,
-            mansfieldRs,
-            bandwidth,
-            openingRangeHigh,
-            currentVolume,
-            vma5,
-            vma10
-          );
+            volume: currentVolume,
+            vma20: vma20Closed,
+            vma5: vma5Closed,
+            yesterdayVolume,
+            orh: openingRangeHigh,
+            ema21Slope,
+            ema50Slope,
+            vwap,
+            highestPriceSinceEntry: position.highestPriceSinceEntry,
+            isLive: true,
+            currentTime: new Date(),
+          });
 
           logger.info(`VCP信号结果: ${signal.action} (理由: ${signal.reason})`);
 
@@ -249,7 +279,7 @@ export class TradingBot {
                   logger.info(`VCP买入订单已提交, 数量: ${sharesToBuy}, 返回: ${JSON.stringify(resp)}`);
                 }
 
-                position.addUnit(currentPrice, sharesToBuy, currentPrice - 2 * atr, mansfieldRs, openingRangeHigh);
+                position.addUnit(currentPrice, sharesToBuy, currentPrice - 2 * atr, mansfieldRs, openingRangeHigh, signal.ema21 ?? ema21);
               }
             } else {
               const proportion = signal.sellProportion ?? 1.0;
