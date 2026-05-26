@@ -161,12 +161,19 @@ async function runBacktestVcp() {
 
       logger.info(`获取到 ${history.length} 天的历史数据，从 ${startDate} 到 ${endDate}`);
 
-      // Calculate 52-week high (highest high in last 252 trading days)
-      const get52WeekHigh = (idx: number): number => {
-        const lookback = Math.min(252, idx);
-        const candles = history.slice(Math.max(0, idx - lookback), idx);
-        return Math.max(...candles.map(c => c.high));
-      };
+  // Calculate 52-week high (highest high in last 252 trading days)
+  const get52WeekHigh = (idx: number): number => {
+    const lookback = Math.min(252, idx);
+    const candles = history.slice(Math.max(0, idx - lookback), idx);
+    return Math.max(...candles.map(c => c.high));
+  };
+
+  // Calculate 20-day high (highest high in last 20 trading days, for momentum breakout)
+  const get20DayHigh = (idx: number): number => {
+    const lookback = Math.min(20, idx);
+    const candles = history.slice(Math.max(0, idx - lookback), idx);
+    return Math.max(...candles.map(c => c.high));
+  };
 
       for (let i = 210; i < history.length; i += 1) {
         const candlesToDate = history.slice(0, i);
@@ -209,23 +216,35 @@ async function runBacktestVcp() {
         const yesterdayVolume = yesterday.volume || 0;
         const todayVolume = today.volume || 0;
 
-        // EMA21 slope calculation
-        const ema21Yesterday = closesUpToYesterday.length >= 21
-          ? calculateEMA(closesUpToYesterday.slice(0, -1), 21)
-          : ema21;
-        const ema21Slope = ema21Yesterday > 0 ? (ema21 - ema21Yesterday) / ema21Yesterday : 0;
+  // EMA21 slope calculation
+  const ema21Yesterday = closesUpToYesterday.length >= 21
+    ? calculateEMA(closesUpToYesterday.slice(0, -1), 21)
+    : ema21;
+  const ema21Slope = ema21Yesterday > 0 ? (ema21 - ema21Yesterday) / ema21Yesterday : 0;
 
-        // Debug slope for specific dates (use today's date for clarity)
-        const todayDateKey = toDateKey(today.time);
-        if (todayDateKey === '2026-04-01' || todayDateKey === '2026-04-02') {
-          logger.info(`[SLOPE DEBUG] ${todayDateKey}: ema21=${ema21.toFixed(2)}, ema21Yesterday=${ema21Yesterday.toFixed(2)}, slope=${ema21Slope.toFixed(6)}`);
-        }
+  // Debug slope for specific dates (use today's date for clarity)
+  const todayDateKey = toDateKey(today.time);
+  if (todayDateKey === '2026-04-01' || todayDateKey === '2026-04-02') {
+    logger.info(`[SLOPE DEBUG] ${todayDateKey}: ema21=${ema21.toFixed(2)}, ema21Yesterday=${ema21Yesterday.toFixed(2)}, slope=${ema21Slope.toFixed(6)}`);
+  }
 
-        // EMA50 slope calculation
-        const ema50Yesterday = closesUpToYesterday.length >= 50
-          ? calculateEMA(closesUpToYesterday.slice(0, -1), 50)
-          : ema50;
-        const ema50Slope = ema50Yesterday > 0 ? (ema50 - ema50Yesterday) / ema50Yesterday : 0;
+  // EMA50 slope calculation
+  const ema50Yesterday = closesUpToYesterday.length >= 50
+    ? calculateEMA(closesUpToYesterday.slice(0, -1), 50)
+    : ema50;
+  const ema50Slope = ema50Yesterday > 0 ? (ema50 - ema50Yesterday) / ema50Yesterday : 0;
+
+  // Debug: log trend + ignition state around key windows
+  const slopeDebugDate = toDateKey(today.time);
+  const inDebugWindow = (slopeDebugDate >= '2025-07-22' && slopeDebugDate <= '2025-09-15')
+    || (slopeDebugDate >= '2025-09-15' && slopeDebugDate <= '2025-10-15')
+    || (slopeDebugDate >= '2025-11-15' && slopeDebugDate <= '2025-12-10');
+  if (inDebugWindow) {
+    const isBullish = today.close > today.open;
+    const volRatio = vma5 > 0 ? (todayVolume / vma5).toFixed(2) : 'N/A';
+    const ignitionThreshold = (1.5 * vma5).toFixed(0);
+    logger.info(`[TREND-WINDOW] ${slopeDebugDate}: close=${today.close.toFixed(2)} open=${today.open.toFixed(2)} vol=${todayVolume} vma5=${vma5.toFixed(0)} vol/vma5=${volRatio} ignitionThreshold=${ignitionThreshold} bullish=${isBullish} ema21=${ema21.toFixed(2)} ema50=${ema50.toFixed(2)} ema200=${ema200.toFixed(2)} slope=${ema21Slope.toFixed(6)} ema50Slope=${ema50Slope.toFixed(6)} trend=${position.currentTrend} upDays=${position.uptrendDays} downDays=${position.downtrendDays} ignition=${position.ignitionCandleDetected} ignitionDate=${position.ignitionCandleDate ?? 'none'}`);
+  }
 
         // VWAP calculation (simplified: use yesterday's typical price * volume weighted average)
         const vwapPeriod = Math.min(20, volumesUpToYesterday.length);
@@ -273,9 +292,10 @@ async function runBacktestVcp() {
             ema21Slope,
             ema50Slope,
             vwap,
-            highestPriceSinceEntry: position.highestPriceSinceEntry,
-            high52Week,
-            date: toDateKey(today.time),
+    highestPriceSinceEntry: position.highestPriceSinceEntry,
+    high52Week,
+    high20Day: get20DayHigh(i),
+    date: toDateKey(today.time),
             isLive: false, // Backtest mode - no 15-min confirmation
           };
 
@@ -322,29 +342,35 @@ async function runBacktestVcp() {
           ema21Slope,
           ema50Slope,
           vwap,
-          highestPriceSinceEntry: position.highestPriceSinceEntry,
-          high52Week,
-          date: toDateKey(today.time),
+  highestPriceSinceEntry: position.highestPriceSinceEntry,
+  high52Week,
+  high20Day: get20DayHigh(i),
+  date: toDateKey(today.time),
           isLive: false,
         };
 
         const signal = generateVcpSignal(signalParams);
 
-        // Debug: log filter status for specific dates
-        const dateKey = toDateKey(today.time);
-        const debugDates = ['2026-04-15', '2025-09-11', '2025-08-05'];
-        if (debugDates.includes(dateKey)) {
-          logger.info(`[DEBUG] ${dateKey}: price=${today.open.toFixed(2)}, ema21=${ema21.toFixed(2)}, ema50=${ema50.toFixed(2)}, ema200=${ema200.toFixed(2)}, slope=${ema21Slope.toFixed(6)}, ignitionCandle=${position.ignitionCandleDetected}`);
-        }
+  // Debug: log filter status for specific dates
+  const dateKey = toDateKey(today.time);
+  const debugDates = ['2026-04-15', '2025-09-11', '2025-08-05', '2025-10-01', '2025-09-30', '2025-10-02'];
+  if (debugDates.includes(dateKey)) {
+    const isUptrend = position.currentTrend === 'uptrend';
+    const isDowntrend = position.currentTrend === 'downtrend';
+    logger.info(`[DEBUG-ENTRY] ${dateKey}: price=${today.close.toFixed(2)} open=${today.open.toFixed(2)} ema21=${ema21.toFixed(2)} ema50=${ema50.toFixed(2)} ema200=${ema200.toFixed(2)} slope=${ema21Slope.toFixed(6)} ignitionCandle=${position.ignitionCandleDetected} ignitionDate=${position.ignitionCandleDate ?? 'none'} trend=${position.currentTrend} upDays=${position.uptrendDays} downDays=${position.downtrendDays} isUptrend=${isUptrend}`);
+    logger.info(`[DEBUG-ENTRY-CONDS] ${dateKey}: ignitionCandle=${position.ignitionCandleDetected} price>ema21=${today.close > ema21} price>ema200=${today.close > ema200} slope>0=${ema21Slope > 0} ema21>ema50=${ema21 > ema50} ALL_MET=${position.ignitionCandleDetected && today.close > ema21 && today.close > ema200 && ema21Slope > 0 && ema21 > ema50}`);
+  }
 
         if (signal.action === 'buy') {
           const currentHoldingsValue = position.totalShares * today.open;
           const totalAccountValue = cash + currentHoldingsValue;
           const sharesToBuyPerUnit = calculateUnitSize(totalAccountValue, atr, volatility, symbol);
           const sharesToBuy = signal.suggestedUnits ? sharesToBuyPerUnit * signal.suggestedUnits : sharesToBuyPerUnit;
-          const executionPrice = signal.reason === 'downtrend_bottom_fishing_entry' 
-            ? today.open // Downtrend entry uses market price
-            : Math.max(today.open, orh); // Uptrend entry uses ORH breakout price
+  const executionPrice = signal.reason === 'downtrend_bottom_fishing_entry'
+    ? today.open // Downtrend entry uses market price
+    : signal.reason === 'uptrend_momentum_breakout_entry'
+      ? today.open // Momentum breakout uses market price (next day open)
+      : Math.max(today.open, orh); // Uptrend pullback entry uses ORH breakout price
 
           if (sharesToBuy > 0) {
             const cost = sharesToBuy * executionPrice;
